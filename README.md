@@ -1,6 +1,6 @@
 # streamsum
 
-Configuration-driven summarization of a stream of events into a set of caches.
+Configuration-driven summarization of a stream of events into a pluggable kv store.
 
 ## Overview
 
@@ -80,7 +80,7 @@ Tuple transformations are specified as a sequence of patterns in the syntax of c
 ### Extending cache types
 
 ## Usage
-streamsum is system, not a library.  It uses `com.stuartsierra.component` to manage lifecycle.
+streamsum is intended to be a self-contained subsystem, not a library.  It uses `com.stuartsierra.component` to manage lifecycle.
 
 ## License
 

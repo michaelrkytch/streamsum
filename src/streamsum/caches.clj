@@ -127,3 +127,19 @@
   "TODO"
   [tuple]
   tuple)
+
+
+(defn default-cache-server
+  "An in-proces CacheServer implemented using Java HashMaps"
+  []
+  (let [cache-map (atom {})]                ; map of maps
+    (reify
+      CacheServer
+      (getMap [this map-name]
+        ;; Return map with given name if it already exists in cache-map
+        (if-let [m (get @cache-map map-name)]
+          m
+          ;; else create a new (mutable) map
+          (let [m (java.util.HashMap.)]
+            (swap! cache-map #(assoc % map-name m))
+            m))))))

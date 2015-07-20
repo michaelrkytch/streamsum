@@ -6,21 +6,6 @@
    (:import [java.util Map]))
 
 
-(defn mock-cache-server
-  "Return a CacheServer instance for testing."
-  []
-  (let [cache-map (atom {})]                ; map of maps
-    (reify
-      CacheServer
-      (getMap [this map-name]
-        ;; Return map with given name if it already exists in cache-map
-        (if-let [m (get @cache-map map-name)]
-          m
-          ;; else create a new (mutable) map
-          (let [m (java.util.HashMap.)]
-            (swap! cache-map #(assoc % map-name m))
-            m))))))
-
 (defn mock-cache-config 
   "Return a cache configuration map for testing"
   []
@@ -34,7 +19,7 @@
 (defn mock-cache-info 
   "Return a new Caches component for testing.  Optionally pass a cache server instance, else will
   use mock cache server"
-  ([] (mock-cache-info (mock-cache-server)))
+  ([] (mock-cache-info (default-cache-server)))
   ([cache-server]
    ;; This is sort of a hack -- we define a system and start it, then return the Caches component
    ;; The test never stops the system -- we depend on the fact that the system does not hold onto 
@@ -45,8 +30,8 @@
      (:cache-info system))))
 
 (deftest test-cache-server
-  (let [cm1 (mock-cache-server)
-        cm2 (mock-cache-server)]
+  (let [cm1 (default-cache-server)
+        cm2 (default-cache-server)]
     (is (satisfies? CacheServer cm1))
 
     (let [cache-info (component/start (new-caches (mock-cache-config) cm1))
