@@ -1,5 +1,32 @@
 {
  ;; 
+ ;; Event extraction
+ ;;
+ ;; Provide a classname which instantiates the Extract interface
+ ;;
+ :extract-class streamsum.example.ExampleExtractor
+
+
+ ;;
+ ;; Tuple transformations
+ ;; 
+ ;; Specify patterns in the syntax of core.match to map a [p s o t] 4-tuple to zero or more 4-tuples.
+ ;; The first element of each output tuple is treated as a key mapping the tuple to a specific cache.
+ ;;
+ :tuple-transforms
+ [
+  [["CREATE_CHAT" user thread time]] [[:create-thread-user thread user time]
+                                      [:post-user-thread user thread time]]
+               
+  [["REPLY_CHAT" user thread time]]  [[:post-user-thread user thread time]]
+               
+  [["CREATE_DOC" user doc time]]     [[:upload-doc-user doc user time]
+                                      [:upload-user-doc user doc time]]
+
+  [["ANNOTATE_DOC" user doc time]]   [[:annotate-user-doc user doc time]]
+ ]
+
+ ;; 
  ;; Cache configuration
  ;;
  ;; Map of cache descriptors of the form {cache-key [cache-type description]} where
@@ -13,25 +40,6 @@
   :upload-user-doc [:lastn "last N documents which a user uploaded"]
   :annotate-user-doc [:lastn "last N documents which a user annotated"]
   }
-
- ;;
- ;; Tuple transformations
- ;; 
- ;; Specify patterns in the syntax of core.match to map a [p s o t] 4-tuple to zero or more 4-tuples.
- ;; The first element of each output tuple is treated as a key mapping the tuple to a specific cache.
- ;;
- :tuple-transforms
- [
-  [[CREATE_CHAT user thread time]] [[:create-thread-user thread user time]
-                                    [:post-user-thread user thread time]]
-               
-  [[REPLY_CHAT user thread time]]  [[:post-user-thread user thread time]]
-               
-  [[CREATE_DOC user doc time]]     [[:upload-doc-user doc user time]
-                                    [:upload-user-doc user doc time]]
-
-  [[ANNOTATE_DOC user doc time]]   [[:annotate-user-doc user doc time]]
- ]
 
  ;;
  ;; Miscelaneous config parameters

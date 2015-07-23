@@ -84,7 +84,7 @@ streamsum is intended to be a self-contained subsystem, not a library.  It uses 
 
 ## License
 
-Copyright © Michael Richards 2015 FIXME
+Copyright © Michael Richards 2015
 
 Distributed under the Eclipse Public License either version 1.0 or (at
 your option) any later version.
