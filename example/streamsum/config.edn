@@ -2,10 +2,7 @@
  ;; 
  ;; Event extraction
  ;;
- ;; Provide a classname which instantiates the Extract interface
- ;;
- :extract-class streamsum.example.ExampleExtractor
-
+ ;; TODO 
 
  ;;
  ;; Tuple transformations

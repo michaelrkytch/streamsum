@@ -34,33 +34,24 @@ Various types of caches are provided, and may be extended to additional types.  
 Each tuple emitted from the `transform` stage has a cache key in its first field.  In the `record` stage, these cache-mapped tuples are aggregated into caches based on the value of this key.
 
 #### Cache store
+An implementation of `CacheServer` may be provided.  This protocol has a single `getMap` function which takes a cache name and returns a mutable `java.util.Map`.  In typical usage, the cache server is an interface between the summarizer and application code which consumes the summarized data from the caches.
+
+The default cache server creates in-memory `java.util.HashMap` instances for caches.
 
 ## Configuration
 
 The system is configured with an [EDN](http://edn-format.org/) map, typically read from a file path.
-See (example/streamsum/config.edn) for an example.
-
-
-### Cache mapping
-Cache configuration is a map of the form `{cache-key [cache-type description]}`, `cache-key` is the name of the cache in keyword form and `cache-type` is one of the three supported types `:associative` `:lastn` `:count`.  For example, 
-
-```
-:cache-config
-{:create-thread-user [:associative "creator of each top-level chat (a.k.a. thread)"]
-   :post-user-thread [:lastn "last N threads to which a user posted"]
-   :upload-doc-user [:associative "original uploader of each document"]
-   :upload-user-doc [:lastn "last N documents which a user uploaded"]
-   :annotate-user-doc [:lastn "last N documents which a user annotated"]
-   }
-```
+See [config.edn](example/streamsum/config.edn) for an example.
 
 ### Event destructuring
 
-Provide an implementation of the `Extract` protocol to perform event destructuring.  The protocol provides a single `extract` function which takes an arbitrary `Object` as input and produces a sequence of zero or more 4-tuples.  Tuples are of the form `[p s o t]`,  predicate (action), subject, object, time.
+The `Extract` protocol provides a single `extract` function which produces a sequence of zero or more 4-tuples from an `Object` implementing `Extract`.  Tuples are of the form `[p s o t]`,  predicate (action), subject, object, time.
+
+To extract an arbitrary type, extend the `Extract` protocol to that type.  By default vectors implement `Extract` as a pass-through.
 
 ### Transformation
 
-Tuple transformations are specified as a sequence of patterns in the syntax of core.match.  These map a [p s o t] 4-tuple to zero or more 4-tuples. The first element of each output tuple is treated as a key mapping the tuple to a specific cache.  For example,
+Tuple transformations are specified as a sequence of patterns in the syntax of core.match.  These map a `[p s o t]` 4-tuple to zero or more 4-tuples. The first element of each output tuple is treated as a key mapping the tuple to a specific cache.  For example,
 
 ```
  :tuple-transforms
@@ -77,10 +68,38 @@ Tuple transformations are specified as a sequence of patterns in the syntax of c
  ]
 ```
 
+### Cache mapping
+Cache configuration is a map of the form `{cache-key [cache-type description]}`, `cache-key` is the name of the cache in keyword form and `cache-type` is one of the three supported types `:associative` `:lastn` `:count`.  For example, 
+
+```
+:cache-config
+{:create-thread-user [:associative "creator of each top-level chat (a.k.a. thread)"]
+   :post-user-thread [:lastn "last N threads to which a user posted"]
+   :upload-doc-user [:associative "original uploader of each document"]
+   :upload-user-doc [:lastn "last N documents which a user uploaded"]
+   :annotate-user-doc [:lastn "last N documents which a user annotated"]
+   }
+```
+
+
+
 ### Extending cache types
 
 ## Usage
-streamsum is intended to be a self-contained subsystem, not a library.  It uses `com.stuartsierra.component` to manage lifecycle.
+`streamsum` is intended to be a self-contained subsystem, not a library.  It uses `com.stuartsierra.component` to manage lifecycle.  It spawns threads to do its processing.
+
+Instantiate a new `streamsum` system passing a path to the config file or a configuration map, an input `BlockingQueue` and an output `BlockingQueue`, and a `CacheServer` instance.  Use `component/start` and `component/stop` to control the system lifecycle.
+
+TODO: include `CacheServer` instance.
+
+```
+(def streamsum 
+        (let [config-path "example/streamsum/config.edn"
+              in-q (ArrayBlockingQueue. 20)
+              out-q (ArrayBlockingQueue. 20)]
+          (-> (new-streamsum config-path in-q out-q)
+              component/start)))
+```
 
 ## License
 

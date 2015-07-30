@@ -27,6 +27,14 @@
 ;; Processing pipeline lifecycle
 ;;
 
+;; TODO: test Extract protocol in process xform
+
+(extend-protocol proto/Extract
+  clojure.lang.PersistentVector
+  ;; just pass through any vector as a tuple
+  (proto/extract [vec] vec))
+
+
 (defn event-processing-xform
   "Create a transducer that performs the full event transformation.
   Returns a channel on which output tuples are put."
@@ -77,9 +85,11 @@
   component/Lifecycle
   (start [this]
     (log/info "Initializing processing pipeline.")
-    (configure-process cache-info (:tuple-transforms config) in-q out-q))
+    (configure-process cache-info (:tuple-transforms config) in-q out-q)
+    this)
   (stop [this]
-    (.put in-q :shutdown)))
+    (.put in-q :shutdown)
+    this))
 
 (defn new-processor
   "Factory function for Processor component."

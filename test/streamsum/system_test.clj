@@ -10,11 +10,6 @@
 (defn example-config []
   (read-config-file "example/streamsum/config.edn"))
 
-(extend-protocol proto/Extract
-  clojure.lang.PersistentVector
-  ;; just pass through any vector as a tuple
-  (proto/extract [vec] vec))
-
 (def source-events [["CREATE_CHAT" :u1 :th1 1]
                     ["CREATE_CHAT" :u2 :th2 2]
                     ["REPLY_CHAT" :u2 :th1 3]
