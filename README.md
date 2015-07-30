@@ -53,7 +53,7 @@ To extract an arbitrary type, extend the `Extract` protocol to that type.  By de
 
 Tuple transformations are specified as a sequence of patterns in the syntax of core.match.  These map a `[p s o t]` 4-tuple to zero or more 4-tuples. The first element of each output tuple is treated as a key mapping the tuple to a specific cache.  For example,
 
-```
+```clojure
  :tuple-transforms
  [
   [[CREATE_CHAT user thread time]] [[:create-thread-user thread user time]
@@ -71,7 +71,7 @@ Tuple transformations are specified as a sequence of patterns in the syntax of c
 ### Cache mapping
 Cache configuration is a map of the form `{cache-key [cache-type description]}`, `cache-key` is the name of the cache in keyword form and `cache-type` is one of the three supported types `:associative` `:lastn` `:count`.  For example, 
 
-```
+```clojure
 :cache-config
 {:create-thread-user [:associative "creator of each top-level chat (a.k.a. thread)"]
    :post-user-thread [:lastn "last N threads to which a user posted"]
@@ -92,7 +92,7 @@ Instantiate a new `streamsum` system passing a path to the config file or a conf
 
 TODO: include `CacheServer` instance.
 
-```
+```clojure
 (def streamsum 
         (let [config-path "example/streamsum/config.edn"
               in-q (ArrayBlockingQueue. 20)
