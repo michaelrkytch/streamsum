@@ -1,20 +1,16 @@
 (ns streamsum.caches-test
   (:require [streamsum.caches :refer :all]
+            [streamsum.system :refer [read-config-file]]
             [com.stuartsierra.component :as component]
-            [clojure.test :refer :all]
-            [streamsum.protocols :refer :all])
+            [clojure.test :refer :all])
    (:import [java.util Map]))
 
 
 (defn mock-cache-config 
-  "Return a cache configuration map for testing"
+  "Return a cache configuration map for testing, using data in example/streamsum/config.edn"
   []
-  {:create-thread-user [:associative "creator of each top-level chat (a.k.a. thread)"]
-   :post-user-thread [:lastn "last N threads to which a user posted"]
-   :upload-doc-user [:associative "original uploader of each document"]
-   :upload-user-doc [:lastn "last N documents which a user uploaded"]
-   :annotate-user-doc [:lastn "last N documents which a user annotated"]
-   })
+  (let [config (read-config-file "example/streamsum/config.edn")]
+    (:cache-config config)))
 
 (defn mock-cache-info 
   "Return a new Caches component for testing.  Optionally pass a cache server instance, else will

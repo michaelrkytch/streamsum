@@ -20,10 +20,11 @@
 "
   (:require [com.stuartsierra.component :as component]
             [amalloy.ring-buffer :as rb]
-            [clojure.tools.logging :as log]
-            [streamsum.protocols :refer :all])
+            [clojure.tools.logging :as log])
   (:import  [java.util Map]))
 
+(defprotocol CacheServer
+  (getMap [this cache-name]))
 
 (declare assoc-cache! assoc-last-n! assoc-count!)
 
@@ -127,6 +128,7 @@
   "TODO"
   [tuple]
   tuple)
+
 
 
 (defn default-cache-server
