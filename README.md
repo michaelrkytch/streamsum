@@ -96,10 +96,13 @@ TODO: include `CacheServer` instance.
 (def streamsum 
         (let [config-path "example/streamsum/config.edn"
               in-q (ArrayBlockingQueue. 20)
-              out-q (ArrayBlockingQueue. 20)]
-          (-> (new-streamsum config-path in-q out-q)
+              out-q (ArrayBlockingQueue. 20)
+              cache-server (caches/default-cache-server)]
+          (-> (new-streamsum config-path in-q out-q cache-server)
               component/start)))
 ```
+
+The client application puts events on the input queue and consumes cache update tuples from the output queue.  The client app may choose to log the cache update tuples for backup purposes.  The tuples must be consumed off the output queue to avoid blocking the processing pipeline.  The client app reads the summarized data from the `CacheServer`'s caches.
 
 ## License
 
