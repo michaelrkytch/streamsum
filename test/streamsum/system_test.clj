@@ -14,6 +14,9 @@
                     ["CREATE_CHAT" :u2 :th2 2]
                     ["REPLY_CHAT" :u2 :th1 3]
                     ["CREATE_DOC" :u3 :d1 3]
+                    0
+                    ["UNKNOWN" 1 2 3]
+                    [:malformed]
                     ["ANNOTATE_DOC" :u2 :d1 4]])
 
 (def translated-tuples [[:create-thread-user :th1 :u1 1]

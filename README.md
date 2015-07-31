@@ -2,6 +2,12 @@
 
 Configuration-driven summarization of a stream of events into a pluggable kv store.
 
+## Leiningen
+
+```clojure
+[michaelrkytch.streamsum "0.1.0"]
+```
+
 ## Overview
 
 There are three stages of data transformation.
@@ -90,7 +96,6 @@ Cache configuration is a map of the form `{cache-key [cache-type description]}`,
 
 Instantiate a new `streamsum` system passing a path to the config file or a configuration map, an input `BlockingQueue` and an output `BlockingQueue`, and a `CacheServer` instance.  Use `component/start` and `component/stop` to control the system lifecycle.
 
-TODO: include `CacheServer` instance.
 
 ```clojure
 (def streamsum 

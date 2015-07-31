@@ -27,8 +27,6 @@
 ;; Processing pipeline lifecycle
 ;;
 
-;; TODO: test Extract protocol in process xform
-
 (extend-protocol proto/Extract
   clojure.lang.PersistentVector
   ;; just pass through any vector as a tuple
@@ -40,6 +38,7 @@
   Returns a channel on which output tuples are put."
   [cache-info tuple-xforms]
   (comp 
+   (filter #(and (not (nil? %)) (satisfies? proto/Extract %))) ; filter out objects we can't Extract
    (map proto/extract)
    (mapcat (trans/make-transform tuple-xforms))
    (map (partial caches/record! cache-info))))

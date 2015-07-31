@@ -12,7 +12,7 @@
            (eval 
             `(match [~tuple]
                     ~@patterns
-                    :else nil))]
-       (when-not output-tuples
+                    :else '()))]
+       (when-not (seq output-tuples)
          (log/debugf "No transform match for %s" tuple))
        output-tuples)))
