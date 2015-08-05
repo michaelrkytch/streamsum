@@ -20,7 +20,8 @@
 "
   (:require [com.stuartsierra.component :as component]
             [amalloy.ring-buffer :as rb]
-            [clojure.tools.logging :as log])
+            [clojure.tools.logging :as log]
+            [streamsum.protocols :as metrics])
   (:import  [java.util Map]))
 
 (defprotocol CacheServer
@@ -81,6 +82,7 @@
   "The record function takes a tuple of the form [pred sub obj time] and updates the appropriate cache based on the value of pred.
   Returns a tuple to be placed on the cache persistence queue."
   [cache-info
+   metrics-component
    [pred subj obj time :as tuple]]
   (when tuple
     (log/debug "Recording " tuple)
@@ -88,7 +90,9 @@
           update-fn (get (:cache-update-fns cache-info) pred)
           ret-tuple (if cache
                       ;; Apply the associated cache update function to the tuple
-                      (update-fn cache tuple)
+                      (do 
+                        (metrics/log metrics-component pred 1)
+                        (update-fn cache tuple))
                       ;; else pred did not match one of our caches (log returns nil)
                       (log/debug "Tuple predicate " pred " did not match any cache in cache configuration."))]
       ret-tuple

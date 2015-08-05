@@ -6,7 +6,8 @@
             [clojure.java.io :as io]
             [com.stuartsierra.component :as component]
             [clojure.tools.logging :as log]
-            [clojure.core.async :as async])
+            [clojure.core.async :as async]
+            [dire.core :refer [with-post-hook!]])
   (:import [java.io PushbackReader]
            [java.util.concurrent BlockingQueue]))
 
@@ -33,15 +34,23 @@
   (proto/extract [vec] vec))
 
 
+(defn- metrics-log-passthrough
+  "Log that a value passed through the given processing stage and pass through value"
+  [metrics-component metric-key v]
+  (proto/log metrics-component metric-key 1)
+  v)
+
 (defn event-processing-xform
   "Create a transducer that performs the full event transformation.
   Returns a channel on which output tuples are put."
-  [cache-info tuple-xforms]
+  [cache-info metrics-component tuple-xforms]
   (comp 
+   (map (partial metrics-log-passthrough metrics-component :events-received))
    (filter #(and (not (nil? %)) (satisfies? proto/Extract %))) ; filter out objects we can't Extract
    (map proto/extract)
+   (map (partial metrics-log-passthrough metrics-component :tuples-extracted))
    (mapcat (trans/make-transform tuple-xforms))
-   (map (partial caches/record! cache-info))))
+   (map (partial caches/record! cache-info metrics-component))))
 
 (defn configure-process
   "Configure event processing pipeline and wire in-q as its source.
@@ -50,8 +59,8 @@
   Note that if either the output queue or the returned channel is full, it will exert back-pressure on the upstream processing.
   Put :shutdown on in-q to terminate the process."
   
-  [cache-info tuple-xforms ^BlockingQueue in-q & [out-q]]
-  (let [xf (event-processing-xform cache-info tuple-xforms)
+  [cache-info metrics-component tuple-xforms ^BlockingQueue in-q & [out-q]]
+  (let [xf (event-processing-xform cache-info metrics-component tuple-xforms)
         ;; TODO exception handler on channel
         ch (async/chan 1 xf)]
 
@@ -80,11 +89,12 @@
                       config
                       ;; bound by Component framework
                       cache-info
+                      metrics-component
                       ]
   component/Lifecycle
   (start [this]
     (log/info "Initializing processing pipeline.")
-    (configure-process cache-info (:tuple-transforms config) in-q out-q)
+    (configure-process cache-info metrics-component (:tuple-transforms config) in-q out-q)
     this)
   (stop [this]
     (.put in-q :shutdown)
@@ -96,6 +106,10 @@
   (map->Processor {:in-q in-q
                    :out-q out-q
                    :config config}))
+
+(def noop-metrics
+  (reify proto/Metrics
+    (proto/log [_ _ _])))
 
 ;;
 ;; streamsum system
@@ -109,9 +123,9 @@
   cache-server: Pass an implementation of the CacheServer protocol.  Default uses Clojure maps."
 
   ([filepath-or-map in-q out-q]
-   (new-streamsum filepath-or-map in-q out-q (caches/default-cache-server)))
+   (new-streamsum filepath-or-map in-q out-q noop-metrics (caches/default-cache-server)))
 
-  ([filepath-or-map in-q out-q cache-server]
+  ([filepath-or-map in-q out-q metrics-component cache-server]
    (let [{:keys [extract-class cache-config tuple-transforms] :as config} 
          (-> (if (string? filepath-or-map)
                (read-config-file filepath-or-map)
@@ -121,10 +135,10 @@
              validate-config)]
      (component/system-map
       :cache-server cache-server
+      :metrics-component metrics-component
       :cache-info (caches/new-caches cache-config cache-server)
       :process (component/using (new-processor config in-q out-q)
-                                [:cache-info]))))
-)
+                                [:cache-info :metrics-component])))))
 
 (defn cache-server [streamsum]
   (get-in streamsum [:cache-info :cache-server]))

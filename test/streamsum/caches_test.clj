@@ -1,6 +1,6 @@
 (ns streamsum.caches-test
   (:require [streamsum.caches :refer :all]
-            [streamsum.system :refer [read-config-file]]
+            [streamsum.system :refer [read-config-file noop-metrics]]
             [com.stuartsierra.component :as component]
             [clojure.test :refer :all])
    (:import [java.util Map]))
@@ -67,7 +67,7 @@
     ))
 
 (let [cache-info (mock-cache-info)
-      record-fn (partial record! cache-info)
+      record-fn (partial record! cache-info noop-metrics)
       t (System/currentTimeMillis)]
 
   (deftest test-record-ignored-event

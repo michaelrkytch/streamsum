@@ -1,6 +1,7 @@
 (ns streamsum.system-test
   (:require [streamsum.system :refer :all]
             [streamsum.protocols :as proto]
+            [streamsum.caches :refer [default-cache-server]]
             [streamsum.caches-test :refer [mock-cache-info]]
             [clojure.test :refer :all]
             [clojure.core.async :as async]
@@ -41,6 +42,15 @@
     1 :upload-user-doc
     1 :annotate-user-doc))
 
+(defn validate-metrics-map 
+  [m]
+  (are [key-count key] (= key-count (key m))
+    2 :create-thread-user
+    3 :post-user-thread
+    1 :upload-doc-user
+    1 :upload-user-doc
+    1 :annotate-user-doc))
+
 
 (defn put-events [^BlockingQueue in-q]
   (doseq [e source-events]
@@ -52,9 +62,9 @@
       (is (not (nil? (.poll out-q 100 TimeUnit/MILLISECONDS)))))
     (is (nil? (.poll out-q)) "There should be nothing left on out-q at this point"))
 
-(deftest test-event-processing-xform
+(defn test-event-processing-xform []
   (let [cache-info (mock-cache-info)
-        xf (event-processing-xform cache-info (:tuple-transforms (example-config)))
+        xf (event-processing-xform cache-info noop-metrics (:tuple-transforms (example-config)))
         out-records (into [] xf source-events)]
     (is (= (count translated-tuples) (count out-records)))
     (validate-caches (:caches cache-info))))
@@ -63,7 +73,7 @@
   (let [cache-info (mock-cache-info)
         xforms (:tuple-transforms (example-config))
         in-q (ArrayBlockingQueue. 20)
-        ch (configure-process cache-info xforms in-q)]
+        ch (configure-process cache-info noop-metrics xforms in-q)]
     (put-events in-q)
     ;; consume everything from output channel
     (let [out-tup (async/<!! (async/into [] ch))]
@@ -76,14 +86,14 @@
         in-q (ArrayBlockingQueue. 20)
         out-q (ArrayBlockingQueue. 20)
         quit-ch (async/chan)
-        ^BlockingQueue config-out (configure-process cache-info xforms in-q out-q)]
+        ^BlockingQueue config-out (configure-process cache-info noop-metrics xforms in-q out-q)]
     
     (is (identical? out-q config-out) "When we pass in an output queue, it should be returned from configure-process")
     (put-events in-q)
     (validate-out-q out-q)
     (validate-caches (:caches cache-info))))
 
-(deftest test-new-streamsum 
+(deftest test-streamsum-without-metrics 
   (let [config-path "example/streamsum/config.edn"
         in-q (ArrayBlockingQueue. 20)
         out-q (ArrayBlockingQueue. 20)
@@ -92,4 +102,24 @@
     (put-events in-q)
     (validate-out-q out-q)
     (validate-caches (get-in streamsum [:cache-info :caches]))
+    (component/stop streamsum)))
+
+(deftest test-metrics
+  ;; record metrics in a map -- just count the # of times each key appears
+  (let [metrics (atom {})
+        metric-inc (fn [m k _]
+                     (assoc m k ((fnil inc 0) (k m))))
+        metrics-component (reify proto/Metrics
+                            (proto/log [_ k v] (swap! metrics metric-inc k v)))
+        config-path "example/streamsum/config.edn"
+        in-q (ArrayBlockingQueue. 20)
+        out-q (ArrayBlockingQueue. 20)
+        streamsum (-> (new-streamsum config-path in-q out-q 
+                                     metrics-component
+                                     (default-cache-server))
+                      component/start)]
+    (put-events in-q)
+    (validate-out-q out-q)
+    (validate-caches (get-in streamsum [:cache-info :caches]))
+    (validate-metrics-map @metrics)
     (component/stop streamsum)))
