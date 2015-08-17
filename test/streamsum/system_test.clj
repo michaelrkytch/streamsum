@@ -8,6 +8,13 @@
             [com.stuartsierra.component :as component])
   (:import [java.util.concurrent BlockingQueue ArrayBlockingQueue TimeUnit]))
 
+(defmacro with-queues
+  "Binds in-q and out-q to new ArrayBlockingQueue(n)"
+  [in-q out-q n & body]
+  `(let [~in-q (ArrayBlockingQueue. ~n)
+         ~out-q (ArrayBlockingQueue. ~n)]
+    ~@body))
+
 (defn example-config []
   (read-config-file "example/streamsum/config.edn"))
 
@@ -51,7 +58,6 @@
     1 :upload-user-doc
     1 :annotate-user-doc))
 
-
 (defn put-events [^BlockingQueue in-q]
   (doseq [e source-events]
     (.put in-q e))
@@ -62,35 +68,37 @@
       (is (not (nil? (.poll out-q 100 TimeUnit/MILLISECONDS)))))
     (is (nil? (.poll out-q)) "There should be nothing left on out-q at this point"))
 
-(defn test-event-processing-xform []
+(deftest test-event-processing-xform
   (let [cache-info (mock-cache-info)
         xf (event-processing-xform cache-info noop-metrics (:tuple-transforms (example-config)))
         out-records (into [] xf source-events)]
     (is (= (count translated-tuples) (count out-records)))
     (validate-caches (:caches cache-info))))
 
-(deftest test-configurne-process-output-channel
-  (let [cache-info (mock-cache-info)
-        xforms (:tuple-transforms (example-config))
-        in-q (ArrayBlockingQueue. 20)
-        ch (configure-process cache-info noop-metrics xforms in-q)]
-    (put-events in-q)
-    ;; consume everything from output channel
-    (let [out-tup (async/<!! (async/into [] ch))]
-      (is (= (count translated-tuples) (count out-tup))))
-    (validate-caches (:caches cache-info))))
+(deftest test-wrap-channel-assertions
+  (let [ch (async/chan 1)]
+    (is (thrown? AssertionError (wrap-channel-with-queues ch nil :whatever)))
+    (is (thrown? AssertionError (wrap-channel-with-queues ch :whatever nil)))))
 
-(deftest test-configurne-process-output-queue
+(deftest test-wrap-channel
+  (with-queues in-q out-q 20
+    (let [ch (async/chan)]
+      (wrap-channel-with-queues ch in-q out-q)
+      (dotimes [n 10]
+        (.put in-q n))
+      (dotimes [n 10]
+        (is (= n (.take out-q))))
+      (.put in-q :shutdown)
+      ;; Channel should now be closed, so always returns nil
+      (is (nil? (async/<!! ch))))))
+
+(deftest test-event-processing-channel
   (let [cache-info (mock-cache-info)
-        xforms (:tuple-transforms (example-config))
-        in-q (ArrayBlockingQueue. 20)
-        out-q (ArrayBlockingQueue. 20)
-        quit-ch (async/chan)
-        ^BlockingQueue config-out (configure-process cache-info noop-metrics xforms in-q out-q)]
-    
-    (is (identical? out-q config-out) "When we pass in an output queue, it should be returned from configure-process")
-    (put-events in-q)
-    (validate-out-q out-q)
+        ch (event-processing-channel cache-info noop-metrics (:tuple-transforms (example-config)))
+        ;; puts output records as a single collectionon out-chan
+        out-chan (async/into [] ch)]
+    (async/<!! (async/onto-chan ch source-events))
+    (is (= (count translated-tuples) (count (async/<!! out-chan))))
     (validate-caches (:caches cache-info))))
 
 (deftest test-streamsum-without-metrics 

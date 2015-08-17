@@ -6,8 +6,7 @@
             [clojure.java.io :as io]
             [com.stuartsierra.component :as component]
             [clojure.tools.logging :as log]
-            [clojure.core.async :as async]
-            [dire.core :refer [with-post-hook!]])
+            [clojure.core.async :as async])
   (:import [java.io PushbackReader]
            [java.util.concurrent BlockingQueue]))
 
@@ -41,8 +40,7 @@
   v)
 
 (defn event-processing-xform
-  "Create a transducer that performs the full event transformation.
-  Returns a channel on which output tuples are put."
+  "Returns a transducer that performs the full event transformation."
   [cache-info metrics-component tuple-xforms]
   (comp 
    (map (partial metrics-log-passthrough metrics-component :events-received))
@@ -52,50 +50,48 @@
    (mapcat (trans/make-transform tuple-xforms))
    (map (partial caches/record! cache-info metrics-component))))
 
-(defn configure-process
-  "Configure event processing pipeline and wire in-q as its source.
-  If out-q is provided, output tuples will be copied onto the output queue.
-  Returns out-q if provided, or an unbuffered channel which carries the output tuples.
-  Note that if either the output queue or the returned channel is full, it will exert back-pressure on the upstream processing.
-  Put :shutdown on in-q to terminate the process."
-  
-  [cache-info metrics-component tuple-xforms ^BlockingQueue in-q & [out-q]]
-  (let [xf (event-processing-xform cache-info metrics-component tuple-xforms)
-        ;; TODO exception handler on channel
-        ch (async/chan 1 xf)]
+(defn event-processing-channel
+  "Returns an unbuffered channel that will perform the full event transformation."
+  [cache-info metrics-component tuple-xforms]
+  ;; TODO exception handler on channel
+  (->> (event-processing-xform cache-info metrics-component tuple-xforms)
+       (async/chan 1)))
 
-    (async/thread
-      (loop [v (.take in-q)]
-        (if (and (not (= :shutdown v))
-                 (async/>!! ch v))
-          (recur (.take in-q))
-          ;; else we got :shutdown
-          (async/close! ch))))
-
-    (if-let [^BlockingQueue out-bq out-q]
-      (do 
-        (async/thread
-          (loop [v (async/<!! ch)]
-            (when v
-              (.put out-bq v)
-              (recur (async/<!! ch)))))
-        out-q)
-      ;; else no output queue provided, return channel
-      ch)))
+(defn wrap-channel-with-queues
+  "Wire an input queue and an output queue to the channel.
+  Note that if the output queue is full, it will exert back-pressure on the upstream processing.
+  Put :shutdown on in-q to terminate the threads and close the channel."
+  [channel ^BlockingQueue in-q ^BlockingQueue out-q]
+  {:pre [in-q out-q]}
+  ;; TODO: Change these threads to go loops
+  (async/thread
+    (loop [v (.take in-q)]
+      (if (and (not (= :shutdown v))
+               (async/>!! channel v))
+        (recur (.take in-q))
+        ;; else we got :shutdown
+        (async/close! channel))))
+  (async/thread
+    (loop [v (async/<!! channel)]
+      (when v
+        (.put out-q v)
+        (recur (async/<!! channel))))))
 
 
 (defrecord Processor [^BlockingQueue in-q 
                       ^BlockingQueue out-q 
                       config
-                      ;; bound by Component framework
+                      ;; internally bound
+                      processing-channel
                       cache-info
                       metrics-component
                       ]
   component/Lifecycle
   (start [this]
     (log/info "Initializing processing pipeline.")
-    (configure-process cache-info metrics-component (:tuple-transforms config) in-q out-q)
-    this)
+    (let [ch (event-processing-channel cache-info metrics-component (:tuple-transforms config))]
+      (wrap-channel-with-queues ch in-q out-q)
+      (assoc this :processing-channel ch)))
   (stop [this]
     (.put in-q :shutdown)
     this))

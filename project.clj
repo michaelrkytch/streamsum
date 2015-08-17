@@ -10,6 +10,7 @@
                  [com.stuartsierra/component "0.2.3"]
                  [org.clojure/core.async "0.1.346.0-17112a-alpha"]]
   :global-vars {*warn-on-reflection* true}
+  :aot [streamsum.protocols]
 )
 
 ;; TODO

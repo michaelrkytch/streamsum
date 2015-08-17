@@ -10,6 +10,8 @@ Configuration-driven summarization of a stream of events into a pluggable kv sto
 
 ## Overview
 
+`streamsum` is intended to provide simple, in-process stream processing capability to Java applications.  It is designed to be integrated into a Java application without the need for writing adapters or shims in Clojure.
+
 There are three stages of data transformation.
 
 1. An event object is destructured into a tuple
@@ -44,7 +46,7 @@ An implementation of `CacheServer` may be provided.  This protocol has a single 
 
 The default cache server creates in-memory `java.util.HashMap` instances for caches.
 
-## Configuration
+## Integration
 
 The system is configured with an [EDN](http://edn-format.org/) map, typically read from a file path.
 See [config.edn](example/streamsum/config.edn) for an example.
@@ -54,6 +56,8 @@ See [config.edn](example/streamsum/config.edn) for an example.
 The `Extract` protocol provides a single `extract` function which produces a sequence of zero or more 4-tuples from an `Object` implementing `Extract`.  Tuples are of the form `[p s o t]`,  predicate (action), subject, object, time.
 
 To extract an arbitrary type, extend the `Extract` protocol to that type.  By default vectors implement `Extract` as a pass-through.
+
+A Java client should ensure that any event objects passed to the input queue implement `streamsum.protocols.Extract`.
 
 ### Transformation
 
@@ -87,9 +91,15 @@ Cache configuration is a map of the form `{cache-key [cache-type description]}`,
    }
 ```
 
+### Metrics
+The `Metrics` protocol allows you to log processing metrics to some external store.  If a `Metrics` instance is provided it will receive callbacks when specific events occur.  Typically you will provide a handler that accumulates the callback values in a KV store of some sort.
+
+### Output encoding
+After a tuple is recorded it is put onto the output queue.  This feature can be used to connect the processing pipeline to a logging system for backup purposes.  By default the output tuples have the form
 
 
-### Extending cache types
+## Extending cache types
+TODO
 
 ## Usage
 `streamsum` is intended to be a self-contained subsystem, not a library.  It uses `com.stuartsierra.component` to manage lifecycle.  It spawns threads to do its processing.
@@ -108,6 +118,13 @@ Instantiate a new `streamsum` system passing a path to the config file or a conf
 ```
 
 The client application puts events on the input queue and consumes cache update tuples from the output queue.  The client app may choose to log the cache update tuples for backup purposes.  The tuples must be consumed off the output queue to avoid blocking the processing pipeline.  The client app reads the summarized data from the `CacheServer`'s caches.
+
+## TODO
+* ability to provide Metrics implementation by classname in config file
+* ability to provide an Extractor class by classname.  When provided this takes precedence over type extensions of Extract
+* output raw tuples or provide plugin to transform output?
+* instantiate with async/chan I/O or BlockingQueue I/O
+
 
 ## License
 
