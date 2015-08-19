@@ -21,11 +21,9 @@
   (:require [com.stuartsierra.component :as component]
             [amalloy.ring-buffer :as rb]
             [clojure.tools.logging :as log]
-            [streamsum.protocols :as metrics])
+            [streamsum.protocols :as metrics]
+            [streamsum.protocols :as proto])
   (:import  [java.util Map]))
-
-(defprotocol CacheServer
-  (getMap [this cache-name]))
 
 (declare assoc-cache! assoc-last-n! assoc-count!)
 
@@ -42,7 +40,7 @@
     (let [    
           ;; Create cache-key -> cache mapping
           caches (into {} (map 
-                           #(vector % (getMap cache-server (name %))) 
+                           #(vector % (proto/getMap cache-server (name %))) 
                            (keys cache-config)))
           ;; Create cache-key -> update function mapping
           ;; TODO: bind config params
@@ -140,7 +138,7 @@
   []
   (let [cache-map (atom {})]                ; map of maps
     (reify
-      CacheServer
+      proto/CacheServer
       (getMap [this map-name]
         ;; Return map with given name if it already exists in cache-map
         (if-let [m (get @cache-map map-name)]

@@ -1,5 +1,6 @@
 (ns streamsum.caches-test
   (:require [streamsum.caches :refer :all]
+            [streamsum.protocols :as proto]
             [streamsum.system :refer [read-config-file noop-metrics]]
             [com.stuartsierra.component :as component]
             [clojure.test :refer :all])
@@ -28,8 +29,6 @@
 (deftest test-cache-server
   (let [cm1 (default-cache-server)
         cm2 (default-cache-server)]
-    (is (satisfies? CacheServer cm1))
-
     (let [cache-info (component/start (new-caches (mock-cache-config) cm1))
           ^Map m (get-cache cache-info :create-thread-user)
           ]
