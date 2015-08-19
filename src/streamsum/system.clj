@@ -95,13 +95,20 @@
                       ]
   component/Lifecycle
   (start [this]
-    (log/info "Initializing processing pipeline.")
-    (let [ch (event-processing-channel cache-info metrics-component (:tuple-transforms config) output-encoder)]
-      (wrap-channel-with-queues ch in-q out-q)
-      (assoc this :processing-channel ch)))
+    ;; start is idempotent -- non-nil processing-channel means already started
+    (if processing-channel
+      ;; already started
+      this
+      ;; else start component
+      (do (log/info "Initializing processing pipeline.")
+          (let [ch (event-processing-channel cache-info metrics-component (:tuple-transforms config) output-encoder)]
+            (wrap-channel-with-queues ch in-q out-q)
+            (assoc this :processing-channel ch)))))
   (stop [this]
-    (.put in-q :shutdown)
-    this))
+    ;; stop is idempotent -- nil processing-channel means already stopped
+    (when processing-channel
+      (.put in-q :shutdown))
+    (assoc this :processing-channel nil)))
 
 (defn new-processor
   "Factory function for Processor component."
