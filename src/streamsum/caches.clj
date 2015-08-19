@@ -79,22 +79,22 @@
 
 
 (defn record!
-  "The record function takes a tuple of the form [pred sub obj time] and updates the appropriate cache based on the value of pred.
-  Returns a tuple to be placed on the cache persistence queue."
+  "The record function takes a tuple of the form [cache-key sub obj time] and updates the appropriate cache based on the value of cache-key.
+  Returns a tuple to be placed on the cache persistence queue of the form [cache-key key val time]."
   [cache-info
    metrics-component
-   [pred subj obj time :as tuple]]
+   [cache-key key obj time :as tuple]]
   (when tuple
     (log/debug "Recording " tuple)
-    (let [cache (get (:caches cache-info) pred)
-          update-fn (get (:cache-update-fns cache-info) pred)
+    (let [cache (get (:caches cache-info) cache-key)
+          update-fn (get (:cache-update-fns cache-info) cache-key)
           ret-tuple (if cache
                       ;; Apply the associated cache update function to the tuple
                       (do 
-                        (metrics/log metrics-component pred 1)
+                        (metrics/log metrics-component cache-key 1)
                         (update-fn cache tuple))
-                      ;; else pred did not match one of our caches (log returns nil)
-                      (log/debug "Tuple predicate " pred " did not match any cache in cache configuration."))]
+                      ;; else cache-key did not match one of our caches (log returns nil)
+                      (log/debug "Tuple predicate " cache-key " did not match any cache in cache configuration."))]
       ret-tuple
       )))
 
@@ -102,7 +102,7 @@
   "Mutate the cache, associating key s with value o, replacing any previous value.
   Returns the stored tuple."
   [^Map cache 
-   [p s o t :as tuple]]
+   [_ s o t :as tuple]]
   (.put cache s o)
   tuple)
 
@@ -114,18 +114,18 @@
 ;; Or, we could do a copy-on-write of a simple array 
 (defn assoc-last-n!
   "Mutate the last-n cache, adding an association from userid to objid, evicting the oldest association if necessary.
-  Returns a tuple [cache subj lastn t] where lastn is the last-n value stored in the cache."
+  Returns a tuple [cache key lastn t] where lastn is the last-n value stored in the cache."
   [^Map cache 
-   [pred subj obj t]
+   [cache-key key obj t]
    buf-size]
   (let [lastn (-> cache
-                  (get subj           ; find the cache row
+                  (get key           ; find the cache row
                        ;; If not found, create a new ring buffer to hold last n objids
                        (rb/ring-buffer buf-size))
                   (conj obj)          ; update last-n
                   )]
-    (.put cache subj lastn)               ; mutating the map!
-    [pred subj lastn t]))
+    (.put cache key lastn)               ; mutating the map!
+    [cache-key key lastn t]))
 
 
 (defn assoc-count!

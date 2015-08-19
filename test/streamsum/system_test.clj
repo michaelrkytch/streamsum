@@ -70,10 +70,28 @@
 
 (deftest test-event-processing-xform
   (let [cache-info (mock-cache-info)
-        xf (event-processing-xform cache-info noop-metrics (:tuple-transforms (example-config)))
+        xf (event-processing-xform cache-info noop-metrics (:tuple-transforms (example-config)) nil)
         out-records (into [] xf source-events)]
     (is (= (count translated-tuples) (count out-records)))
     (validate-caches (:caches cache-info))))
+
+(deftest test-output-encoding
+  ;; test encoder puts tuple elements in a map
+  (let [encoder (reify proto/Encode
+                  (encode [this cache-key key val time]
+                    {:cache-key cache-key
+                     :key key
+                     :val val
+                     :time time}))
+        cache-info (mock-cache-info)
+        xf (event-processing-xform cache-info noop-metrics (:tuple-transforms (example-config)) encoder)
+        out-records (into [] xf source-events)]
+    (is (= (count translated-tuples) (count out-records)))
+    ;; spot-check form of first output record
+    (is (= :create-thread-user
+           (:cache-key (first out-records))))
+    (is (= :th1 
+           (:key (first out-records))))))
 
 (deftest test-wrap-channel-assertions
   (let [ch (async/chan 1)]
@@ -94,7 +112,7 @@
 
 (deftest test-event-processing-channel
   (let [cache-info (mock-cache-info)
-        ch (event-processing-channel cache-info noop-metrics (:tuple-transforms (example-config)))
+        ch (event-processing-channel cache-info noop-metrics (:tuple-transforms (example-config)) nil)
         ;; puts output records as a single collectionon out-chan
         out-chan (async/into [] ch)]
     (async/<!! (async/onto-chan ch source-events))
@@ -102,32 +120,30 @@
     (validate-caches (:caches cache-info))))
 
 (deftest test-streamsum-without-metrics 
-  (let [config-path "example/streamsum/config.edn"
-        in-q (ArrayBlockingQueue. 20)
-        out-q (ArrayBlockingQueue. 20)
-        streamsum (-> (new-streamsum config-path in-q out-q)
-                      component/start)]
-    (put-events in-q)
-    (validate-out-q out-q)
-    (validate-caches (get-in streamsum [:cache-info :caches]))
-    (component/stop streamsum)))
+  (with-queues in-q out-q 20 
+    (let [config-path "example/streamsum/config.edn"
+          streamsum (-> (new-streamsum config-path in-q out-q)
+                        component/start)]
+      (put-events in-q)
+      (validate-out-q out-q)
+      (validate-caches (get-in streamsum [:cache-info :caches]))
+      (component/stop streamsum))))
 
 (deftest test-metrics
-  ;; record metrics in a map -- just count the # of times each key appears
-  (let [metrics (atom {})
-        metric-inc (fn [m k _]
-                     (assoc m k ((fnil inc 0) (k m))))
-        metrics-component (reify proto/Metrics
-                            (proto/log [_ k v] (swap! metrics metric-inc k v)))
-        config-path "example/streamsum/config.edn"
-        in-q (ArrayBlockingQueue. 20)
-        out-q (ArrayBlockingQueue. 20)
-        streamsum (-> (new-streamsum config-path in-q out-q 
-                                     metrics-component
-                                     (default-cache-server))
-                      component/start)]
-    (put-events in-q)
-    (validate-out-q out-q)
-    (validate-caches (get-in streamsum [:cache-info :caches]))
-    (validate-metrics-map @metrics)
-    (component/stop streamsum)))
+  (with-queues in-q out-q 20
+    ;; record metrics in a map -- just count the # of times each key appears
+    (let [metrics (atom {})
+          metric-inc (fn [m k _]
+                       (assoc m k ((fnil inc 0) (k m))))
+          metrics-component (reify proto/Metrics
+                              (proto/log [_ k v] (swap! metrics metric-inc k v)))
+          config-path "example/streamsum/config.edn"
+          streamsum (-> (new-streamsum config-path in-q out-q 
+                                       metrics-component
+                                       (default-cache-server))
+                        component/start)]
+      (put-events in-q)
+      (validate-out-q out-q)
+      (validate-caches (get-in streamsum [:cache-info :caches]))
+      (validate-metrics-map @metrics)
+      (component/stop streamsum))))

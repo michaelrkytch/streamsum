@@ -7,7 +7,7 @@
 
 (defprotocol Encode
   "Perform final transformation of output tuples into a form that the app can use for backup."
-  (encode [tuple]))
+  (encode [this cache-key key val time]))
 
 (defprotocol Metrics
   "Provide a callback for metrics logging."

@@ -95,8 +95,9 @@ Cache configuration is a map of the form `{cache-key [cache-type description]}`,
 The `Metrics` protocol allows you to log processing metrics to some external store.  If a `Metrics` instance is provided it will receive callbacks when specific events occur.  Typically you will provide a handler that accumulates the callback values in a KV store of some sort.
 
 ### Output encoding
-After a tuple is recorded it is put onto the output queue.  This feature can be used to connect the processing pipeline to a logging system for backup purposes.  By default the output tuples have the form
+After a tuple is recorded it is put onto the output queue.  This feature can be used to connect the processing pipeline to a logging system for backup purposes.  Output tuples have the form `[cache-key key value time]`.
 
+An implementation of the `Encode` protocol can be provided to transform the output tuples before they are placed on the output queue.
 
 ## Extending cache types
 TODO

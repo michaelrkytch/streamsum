@@ -41,20 +41,26 @@
 
 (defn event-processing-xform
   "Returns a transducer that performs the full event transformation."
-  [cache-info metrics-component tuple-xforms]
-  (comp 
-   (map (partial metrics-log-passthrough metrics-component :events-received))
-   (filter #(and (not (nil? %)) (satisfies? proto/Extract %))) ; filter out objects we can't Extract
-   (map proto/extract)
-   (map (partial metrics-log-passthrough metrics-component :tuples-extracted))
-   (mapcat (trans/make-transform tuple-xforms))
-   (map (partial caches/record! cache-info metrics-component))))
+  [cache-info metrics-component tuple-xforms output-encoder]
+  (let [xform (comp 
+                (map (partial metrics-log-passthrough metrics-component :events-received))
+                (filter #(and (not (nil? %)) (satisfies? proto/Extract %))) ; filter out objects we can't Extract
+                (map proto/extract)
+                (map (partial metrics-log-passthrough metrics-component :tuples-extracted))
+                (mapcat (trans/make-transform tuple-xforms))
+                (map (partial caches/record! cache-info metrics-component)))]
+    (if output-encoder 
+      (comp 
+       xform 
+       (map (fn [[cache-key key val time]] 
+              (proto/encode output-encoder cache-key key val time))))
+      xform)))
 
 (defn event-processing-channel
   "Returns an unbuffered channel that will perform the full event transformation."
-  [cache-info metrics-component tuple-xforms]
+  [cache-info metrics-component tuple-xforms output-encoder]
   ;; TODO exception handler on channel
-  (->> (event-processing-xform cache-info metrics-component tuple-xforms)
+  (->> (event-processing-xform cache-info metrics-component tuple-xforms output-encoder)
        (async/chan 1)))
 
 (defn wrap-channel-with-queues
@@ -85,11 +91,12 @@
                       processing-channel
                       cache-info
                       metrics-component
+                      output-encoder
                       ]
   component/Lifecycle
   (start [this]
     (log/info "Initializing processing pipeline.")
-    (let [ch (event-processing-channel cache-info metrics-component (:tuple-transforms config))]
+    (let [ch (event-processing-channel cache-info metrics-component (:tuple-transforms config) output-encoder)]
       (wrap-channel-with-queues ch in-q out-q)
       (assoc this :processing-channel ch)))
   (stop [this]
@@ -98,10 +105,11 @@
 
 (defn new-processor
   "Factory function for Processor component."
-  [config in-q out-q]
+  [config in-q out-q output-encoder]
   (map->Processor {:in-q in-q
                    :out-q out-q
-                   :config config}))
+                   :config config
+                   :output-encoder output-encoder}))
 
 (def noop-metrics
   (reify proto/Metrics
@@ -116,12 +124,20 @@
   "Factory function instantiating a new streamsum processing pipeline.  Use the start/stop functions of the Lifecycle protocol to control the pipeline's lifecycle.  
   
   filepath-or-map: Pass configuration as a map, or as a path string to a configuration file.
-  cache-server: Pass an implementation of the CacheServer protocol.  Default uses Clojure maps."
+  in-q: BlockingQueue supplying input objects
+  out-q: Blocking queue onto which output objects will be pushed
+  cache-server: Pass an implementation of the CacheServer protocol.  Default uses Clojure maps.
+  metrics-component: Implementation of the Metrics protocol (optional).
+  output-encoder: Implementation of the Encode protocol (optional).  Default output format is a vector [cache-key key val time].
+  "
 
   ([filepath-or-map in-q out-q]
    (new-streamsum filepath-or-map in-q out-q noop-metrics (caches/default-cache-server)))
 
   ([filepath-or-map in-q out-q metrics-component cache-server]
+   (new-streamsum filepath-or-map in-q out-q metrics-component (caches/default-cache-server) nil))
+
+  ([filepath-or-map in-q out-q metrics-component cache-server output-encoder]
    (let [{:keys [extract-class cache-config tuple-transforms] :as config} 
          (-> (if (string? filepath-or-map)
                (read-config-file filepath-or-map)
@@ -133,7 +149,7 @@
       :cache-server cache-server
       :metrics-component metrics-component
       :cache-info (caches/new-caches cache-config cache-server)
-      :process (component/using (new-processor config in-q out-q)
+      :process (component/using (new-processor config in-q out-q output-encoder)
                                 [:cache-info :metrics-component])))))
 
 (defn cache-server [streamsum]
