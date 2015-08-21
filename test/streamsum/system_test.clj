@@ -1,7 +1,6 @@
 (ns streamsum.system-test
   (:require [streamsum.system :refer :all]
             [streamsum.protocols :as proto]
-            [streamsum.transform :as trans]
             [streamsum.caches :refer [default-cache-server]]
             [streamsum.caches-test :refer [mock-cache-info]]
             [clojure.test :refer :all]
@@ -16,8 +15,10 @@
          ~out-q (ArrayBlockingQueue. ~n)]
     ~@body))
 
-(defn example-config []
-  (read-config-file "example/streamsum/config.edn"))
+(def example-config 
+  (read-config-file "example/streamsum/config.clj"))
+
+(defn tuple-xform [] (:main-transform example-config))
 
 (def source-events [["CREATE_CHAT" :u1 :th1 1]
                     ["CREATE_CHAT" :u2 :th2 2]
@@ -27,6 +28,10 @@
                     ["UNKNOWN" 1 2 3]
                     [:malformed]
                     ["ANNOTATE_DOC" :u2 :d1 4]])
+
+;; filter out malformed source events so we won't throw exceptions on processing
+(def only-valid-source-events (filter #(and (vector? %) (= 4 (count %))) 
+                                   source-events))
 
 (def translated-tuples [[:create-thread-user :th1 :u1 1]
                          [:post-user-thread :u1 :th1 1]
@@ -70,8 +75,8 @@
 
 (deftest test-event-processing-xform
   (let [cache-info (mock-cache-info)
-        xf (event-processing-xform cache-info noop-metrics (:tuple-transforms (example-config)) nil)
-        out-records (into [] xf source-events)]
+        xf (event-processing-xform cache-info noop-metrics (tuple-xform) nil)
+        out-records (into [] xf only-valid-source-events)]
     (is (= (count translated-tuples) (count out-records)))
     (validate-caches (:caches cache-info))))
 
@@ -84,8 +89,8 @@
                      :val val
                      :time time}))
         cache-info (mock-cache-info)
-        xf (event-processing-xform cache-info noop-metrics (:tuple-transforms (example-config)) encoder)
-        out-records (into [] xf source-events)]
+        xf (event-processing-xform cache-info noop-metrics (tuple-xform) encoder)
+        out-records (into [] xf only-valid-source-events)]
     (is (= (count translated-tuples) (count out-records)))
     ;; spot-check form of first output record
     (is (= :create-thread-user
@@ -112,7 +117,7 @@
 
 (deftest test-event-processing-channel
   (let [cache-info (mock-cache-info)
-        ch (event-processing-channel cache-info noop-metrics (:tuple-transforms (example-config)) nil)
+        ch (event-processing-channel cache-info noop-metrics (tuple-xform) nil)
         ;; puts output records as a single collectionon out-chan
         out-chan (async/into [] ch)]
     (async/<!! (async/onto-chan ch source-events))
@@ -122,12 +127,9 @@
 (deftest test-channel-exception
   ;; Exception during processing should be logged and ignored;
   ;; Should not close the channel
-  (let [tuple-transform-pattern (:tuple-transforms (example-config))
-        ;; any tuple other than the standard ones will throw an exception
-        tuple-transform-pattern (conj tuple-transform-pattern 
-                                      ['_] ['(throw (Exception. "Expected exception"))])
-        cache-info (mock-cache-info)
-        ch (event-processing-channel cache-info noop-metrics tuple-transform-pattern nil)
+  ;; The non-quad source events will throw AssertErrors
+  (let [cache-info (mock-cache-info)
+        ch (event-processing-channel cache-info noop-metrics (tuple-xform) nil)
         ;; puts output records as a single collectionon out-chan
         out-chan (async/into [] ch)]
     (async/<!! (async/onto-chan ch source-events))
@@ -136,7 +138,7 @@
 
 (deftest test-streamsum-without-metrics 
   (with-queues in-q out-q 20 
-    (let [config-path "example/streamsum/config.edn"
+    (let [config-path "example/streamsum/config.clj"
           streamsum (-> (new-streamsum config-path in-q out-q)
                         component/start)]
       (put-events in-q)
@@ -152,7 +154,7 @@
                        (assoc m k ((fnil inc 0) (k m))))
           metrics-component (reify proto/Metrics
                               (proto/log [_ k v] (swap! metrics metric-inc k v)))
-          config-path "example/streamsum/config.edn"
+          config-path "example/streamsum/config.clj"
           streamsum (-> (new-streamsum config-path in-q out-q 
                                        metrics-component
                                        (default-cache-server))

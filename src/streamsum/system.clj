@@ -1,24 +1,48 @@
 (ns streamsum.system
   (:require [streamsum.caches :as caches]
-            [streamsum.transform :as trans]
             [streamsum.protocols :as proto]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
             [com.stuartsierra.component :as component]
             [clojure.tools.logging :as log]
-            [clojure.core.async :as async])
+            [clojure.core.async :as async]
+            [clojure.core.match :refer [match clj-form]])
   (:import [java.io PushbackReader]
            [java.util.concurrent BlockingQueue]))
 
+;;
+;; Configuration processing
+;;
+
+(defmacro deftransform
+  "Returns a unary function transforming a 4-tuple into a sequence of zero or more 4-tuples.  The transformation is specified using the pattern matching syntax of core.match."
+  [name & patterns]
+  `(def ~name 
+    (fn [tuple#]
+       {:pre [(vector? tuple#) 
+              (= 4 (count tuple#))]}
+       (log/debugf "Transforming " tuple#)
+       (let [output-tuples# (match tuple#
+                                   ~@patterns
+                                   :else '())]
+         (when-not (seq output-tuples#)
+           (log/debugf "No transform match for %s" tuple#))
+         output-tuples#))))
+
 (defn read-config-file
+  "Reads the config file.  Returns the configuraiton map."
   [param-file-name]
-  (with-open [r (io/reader param-file-name)
-              pbr (PushbackReader. r)]
-    (edn/read pbr)))
+  ;; ensure that the config is evaluated in this namespace, regardless
+  ;; of where this function is called from 
+  (binding [*ns* (find-ns 'streamsum.system)]
+    (load-file param-file-name)))
 
 (defn validate-config
   [config]
-  ;; TODO
+  (assert (:main-transform config) "Incomplete configuration.  :main-transform not defined.")
+  (assert (ifn? (:main-transform config)) "Invalid configuration.  :main-transform not defined to be a transform function")
+  (assert (:cache-config config) "Incomplete configuration. :cache-config not defined.")
+  (assert (map? (:cache-config config)) "Invalid configuration.  cache-config should be a map.")
   config
   )
 
@@ -41,13 +65,13 @@
 
 (defn event-processing-xform
   "Returns a transducer that performs the full event transformation."
-  [cache-info metrics-component tuple-xforms output-encoder]
+  [cache-info metrics-component tuple-xform output-encoder]
   (let [xform (comp 
                 (map (partial metrics-log-passthrough metrics-component :events-received))
                 (filter #(and (not (nil? %)) (satisfies? proto/Extract %))) ; filter out objects we can't Extract
                 (map proto/extract)
                 (map (partial metrics-log-passthrough metrics-component :tuples-extracted))
-                (mapcat (trans/make-transform tuple-xforms))
+                (mapcat tuple-xform)
                 (map (partial metrics-log-passthrough metrics-component :tuples-transformed))
                 (map (partial caches/record! cache-info metrics-component)))]
     (if output-encoder 
@@ -60,8 +84,8 @@
 (defn event-processing-channel
   "Returns an unbuffered channel that will perform the full event transformation.
   Exceptions will be logged and exception-causing transformations will be dropped."
-  [cache-info metrics-component tuple-xforms output-encoder]
-  (let [xform (event-processing-xform cache-info metrics-component tuple-xforms output-encoder)
+  [cache-info metrics-component tuple-xform output-encoder]
+  (let [xform (event-processing-xform cache-info metrics-component tuple-xform output-encoder)
         ex-handler #(log/warn % "Exception in event transformation.  Aborting process for event.")]
     (async/chan 1 xform ex-handler)))
 
@@ -103,7 +127,7 @@
       this
       ;; else start component
       (do (log/info "Initializing processing pipeline.")
-          (let [ch (event-processing-channel cache-info metrics-component (:tuple-transforms config) output-encoder)]
+          (let [ch (event-processing-channel cache-info metrics-component (:main-transform config) output-encoder)]
             (wrap-channel-with-queues ch in-q out-q)
             (assoc this :processing-channel ch)))))
   (stop [this]
@@ -147,7 +171,7 @@
    (new-streamsum filepath-or-map in-q out-q metrics-component (caches/default-cache-server) nil))
 
   ([filepath-or-map in-q out-q metrics-component cache-server output-encoder]
-   (let [{:keys [extract-class cache-config tuple-transforms] :as config} 
+   (let [{:keys [cache-config] :as config} 
          (-> (if (string? filepath-or-map)
                (read-config-file filepath-or-map)
                ;; else just use the map directly as config

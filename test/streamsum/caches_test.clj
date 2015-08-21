@@ -1,17 +1,19 @@
 (ns streamsum.caches-test
   (:require [streamsum.caches :refer :all]
             [streamsum.protocols :as proto]
-            [streamsum.system :refer [read-config-file noop-metrics]]
+            [streamsum.system :refer [deftransform read-config-file validate-config noop-metrics]]
             [com.stuartsierra.component :as component]
             [clojure.test :refer :all])
    (:import [java.util Map]))
 
 
 (defn mock-cache-config 
-  "Return a cache configuration map for testing, using data in example/streamsum/config.edn"
+  "Return a cache configuration map for testing, using data in example config file"
   []
-  (let [config (read-config-file "example/streamsum/config.edn")]
-    (:cache-config config)))
+  (-> "example/streamsum/config.clj"
+      read-config-file
+      validate-config
+      :cache-config))
 
 (defn mock-cache-info 
   "Return a new Caches component for testing.  Optionally pass a cache server instance, else will
