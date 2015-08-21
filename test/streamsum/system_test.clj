@@ -1,6 +1,7 @@
 (ns streamsum.system-test
   (:require [streamsum.system :refer :all]
             [streamsum.protocols :as proto]
+            [streamsum.transform :as trans]
             [streamsum.caches :refer [default-cache-server]]
             [streamsum.caches-test :refer [mock-cache-info]]
             [clojure.test :refer :all]
@@ -60,8 +61,7 @@
 
 (defn put-events [^BlockingQueue in-q]
   (doseq [e source-events]
-    (.put in-q e))
-  (.put in-q :shutdown))
+    (.put in-q e)))
 
 (defn validate-out-q [^BlockingQueue out-q]
     (dotimes [_ (count translated-tuples)]
@@ -113,6 +113,21 @@
 (deftest test-event-processing-channel
   (let [cache-info (mock-cache-info)
         ch (event-processing-channel cache-info noop-metrics (:tuple-transforms (example-config)) nil)
+        ;; puts output records as a single collectionon out-chan
+        out-chan (async/into [] ch)]
+    (async/<!! (async/onto-chan ch source-events))
+    (is (= (count translated-tuples) (count (async/<!! out-chan))))
+    (validate-caches (:caches cache-info))))
+
+(deftest test-channel-exception
+  ;; Exception during processing should be logged and ignored;
+  ;; Should not close the channel
+  (let [tuple-transform-pattern (:tuple-transforms (example-config))
+        ;; any tuple other than the standard ones will throw an exception
+        tuple-transform-pattern (conj tuple-transform-pattern 
+                                      ['_] ['(throw (Exception. "Expected exception"))])
+        cache-info (mock-cache-info)
+        ch (event-processing-channel cache-info noop-metrics tuple-transform-pattern nil)
         ;; puts output records as a single collectionon out-chan
         out-chan (async/into [] ch)]
     (async/<!! (async/onto-chan ch source-events))

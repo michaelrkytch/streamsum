@@ -33,7 +33,7 @@
   (proto/extract [vec] vec))
 
 
-(defn- metrics-log-passthrough
+(defn metrics-log-passthrough
   "Log that a value passed through the given processing stage and pass through value"
   [metrics-component metric-key v]
   (proto/log metrics-component metric-key 1)
@@ -48,6 +48,7 @@
                 (map proto/extract)
                 (map (partial metrics-log-passthrough metrics-component :tuples-extracted))
                 (mapcat (trans/make-transform tuple-xforms))
+                (map (partial metrics-log-passthrough metrics-component :tuples-transformed))
                 (map (partial caches/record! cache-info metrics-component)))]
     (if output-encoder 
       (comp 
@@ -57,11 +58,12 @@
       xform)))
 
 (defn event-processing-channel
-  "Returns an unbuffered channel that will perform the full event transformation."
+  "Returns an unbuffered channel that will perform the full event transformation.
+  Exceptions will be logged and exception-causing transformations will be dropped."
   [cache-info metrics-component tuple-xforms output-encoder]
-  ;; TODO exception handler on channel
-  (->> (event-processing-xform cache-info metrics-component tuple-xforms output-encoder)
-       (async/chan 1)))
+  (let [xform (event-processing-xform cache-info metrics-component tuple-xforms output-encoder)
+        ex-handler #(log/warn % "Exception in event transformation.  Aborting process for event.")]
+    (async/chan 1 xform ex-handler)))
 
 (defn wrap-channel-with-queues
   "Wire an input queue and an output queue to the channel.
