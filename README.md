@@ -42,14 +42,13 @@ Various types of caches are provided, and may be extended to additional types.  
 Each tuple emitted from the `transform` stage has a cache key in its first field.  In the `record` stage, these cache-mapped tuples are aggregated into caches based on the value of this key.
 
 #### Cache store
-An implementation of `CacheServer` may be provided.  This protocol has a single `getMap` function which takes a cache name and returns a mutable `java.util.Map`.  In typical usage, the cache server is an interface between the summarizer and application code which consumes the summarized data from the caches.
+External storage can be provided by implementing the `CacheServer` protocol/interface.  This protocol has a single `getMap` function which takes a cache name and returns a mutable `java.util.Map`.  In typical usage, the cache server is an interface between the summarizer and application code which consumes the summarized data from the caches.
 
 The default cache server creates in-memory `java.util.HashMap` instances for caches.
 
 ## Integration
 
-The system is configured with an [EDN](http://edn-format.org/) map, typically read from a file path.
-See [config.edn](example/streamsum/config.edn) for an example.
+The system can be configured with a file or programatically.  See [config.clj](example/streamsum/config.clj) for an example configuration file.
 
 ### Event destructuring
 
@@ -95,7 +94,7 @@ Cache configuration is a map of the form `{cache-key [cache-type description]}`,
 The `Metrics` protocol allows you to log processing metrics to some external store.  If a `Metrics` instance is provided it will receive callbacks when specific events occur.  Typically you will provide a handler that accumulates the callback values in a KV store of some sort.
 
 ### Output encoding
-After a tuple is recorded it is put onto the output queue.  This feature can be used to connect the processing pipeline to a logging system for backup purposes.  Output tuples have the form `[cache-key key value time]`.
+After a tuple is recorded it is put onto the output queue.  This feature can be used to connect the processing pipeline to a logging system for backup purposes.  Output tuples have the form `[cache-key key value time]`, where `value` is the new value associated with `key` in the cache after it has been updated.
 
 An implementation of the `Encode` protocol can be provided to transform the output tuples before they are placed on the output queue.
 
@@ -110,11 +109,12 @@ Instantiate a new `streamsum` system passing a path to the config file or a conf
 
 ```clojure
 (def streamsum 
-        (let [config-path "example/streamsum/config.edn"
+        (let [config-path "example/streamsum/config.clj"
               in-q (ArrayBlockingQueue. 20)
               out-q (ArrayBlockingQueue. 20)
-              cache-server (caches/default-cache-server)]
-          (-> (new-streamsum config-path in-q out-q cache-server)
+              cache-server (caches/default-cache-server)
+              metrics-component (noop-metrics)]
+          (-> (new-streamsum config-path in-q out-q noop-metrics cache-server)
               component/start)))
 ```
 
@@ -123,9 +123,6 @@ The client application puts events on the input queue and consumes cache update 
 ## TODO
 * ability to provide Metrics implementation by classname in config file
 * ability to provide an Extractor class by classname.  When provided this takes precedence over type extensions of Extract
-* output raw tuples or provide plugin to transform output?
-* instantiate with async/chan I/O or BlockingQueue I/O
-
 
 ## License
 
