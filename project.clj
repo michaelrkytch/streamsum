@@ -1,4 +1,4 @@
-(defproject michaelrkytch/streamsum "0.1.0"
+(defproject michaelrkytch/streamsum "0.1.1-SNAPSHOT"
   :description "Configuration-driven summarization of event streams."
   :url "https://github.com/michaelrkytch/streamsum"
   :license {:name "Eclipse Public License"
@@ -11,7 +11,9 @@
                  [org.clojure/core.async "0.1.346.0-17112a-alpha"]]
   :global-vars {*warn-on-reflection* true}
   :aot [streamsum.protocols]
-)
+  :repositories [["osn-internal-local" {:url "http://af.osn.oraclecorp.com/artifactory/internal-local"
+                                        :snapshots false
+                                        :sign-releases false}]])
 
 ;; TODO
 ;; rrb and amalloy-ring

@@ -123,6 +123,10 @@ The client application puts events on the input queue and consumes cache update 
 ## TODO
 * ability to provide Metrics implementation by classname in config file
 * ability to provide an Extractor class by classname.  When provided this takes precedence over type extensions of Extract
+* Allow caches to pick up configuration parameters (e.g. size of last-N associative cache)
+
+#### Extensible cache types
+The integrating app provides a cache update function and maps that to a cache type key.
 
 ## License
 

@@ -93,4 +93,13 @@
   (deftest test-annotatedDoc-event
     (record-fn [:annotate-user-doc 112 999 t])
     (is (= [999] (get (get-cache cache-info :annotate-user-doc) 112))))
+
+  ;; Test that we can assoc a nil value to replace a previous non-nil value
+  ;; in an associative cache
+  (deftest test-assoc-nil
+    (record-fn [:create-thread-user 1009 2000 t])
+    (record-fn [:create-thread-user 1009 nil t])
+    (is (= nil (get (get-cache cache-info :create-thread-user) 1009))))
+
   )
+

@@ -100,7 +100,7 @@
   "Mutate the cache, associating key s with value o, replacing any previous value.
   Returns the stored tuple."
   [^Map cache 
-   [_ s o t :as tuple]]
+   [_ s o _ :as tuple]]
   (.put cache s o)
   tuple)
 
