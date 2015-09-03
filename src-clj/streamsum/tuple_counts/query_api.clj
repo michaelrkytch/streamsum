@@ -1,5 +1,5 @@
 (ns streamsum.tuple-counts.query-api
-  "new-query-api returns an instance of the CountSummary interface that can be used to access the provided tuple count summary structure."
+  "CountSummaryImpl is an implementation of the CountSummary interface that can be used to access the provided tuple count structure."
   (:require [clojure.data.priority-map :as pm]
             [clojure.algo.generic.functor :refer [fmap]])
   (:import [streamsum.tuple_counts CountSummary CountSummary$CountTriple]))

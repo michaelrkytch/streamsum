@@ -19,8 +19,8 @@ Where `count` is the count of occurrences so far and `timestamp` is the timestam
 
 ## Update API
 
-* `(update [[action subject object timestamp]])` Increments the count for the given key and replaces the timestamp if it is greater than the previous value
-* `(remove [[action subject object timestamp]])` Decrements the count for the given key.  Timestamp is ignored.
+* `(inc-count [db [action subject object timestamp]])` Increments the count for the given key and replaces the timestamp if it is greater than the previous value.
+* `(dec-count [db [action subject object timestamp]])` Decrements the count for the given key.  Timestamp is ignored.
 
 ## Query API
 A Java interface is provided for the query API, to support interoperability.  See `CountSummary.java`
