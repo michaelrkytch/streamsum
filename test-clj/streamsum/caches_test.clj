@@ -2,9 +2,11 @@
   (:require [streamsum.caches :refer :all]
             [streamsum.protocols :as proto]
             [streamsum.system :refer [deftransform read-config-file validate-config noop-metrics]]
+            [streamsum.tuple-counts.query-api :as q]
             [com.stuartsierra.component :as component]
             [clojure.test :refer :all])
-   (:import [java.util Map]))
+   (:import [java.util Map]
+            [streamsum.tuple_counts CountSummary]))
 
 
 (defn mock-cache-config 
@@ -66,6 +68,31 @@
       (assoc-last-n m [:upload-user-doc userid docid t]))
     (is (= [1002 1003 1004 1005] (seq (get m userid))))      
     ))
+
+(deftest test-count-cache
+  (let [cache-info (mock-cache-info)
+        m (get-cache cache-info :interactions-user-user)
+        src-user 100
+        tgt-user 101
+        t (System/currentTimeMillis)
+        t2 (+ 10000 t)
+        t3 (+ 10000 t2)
+        ^CountSummary count-api (q/->CountSummaryImpl m)]
+
+    (let [inc-ret (inc-count! m [:interactions-user-user src-user [:star-user tgt-user] t])
+          expected-newval {:star-user {tgt-user [1 t]}}]
+      (is (= [tgt-user 1 t] (vals (.getCount count-api src-user :star-user tgt-user))))
+      (is (= [:interactions-user-user src-user expected-newval t] inc-ret)))
+
+    (let [inc-ret (inc-count! m [:interactions-user-user src-user [:star-user tgt-user] t2])
+          expected-newval {:star-user {tgt-user [2 t2]}}]
+      (is (= [tgt-user 2 t2] (vals (.getCount count-api src-user :star-user tgt-user))))
+      (is (= [:interactions-user-user src-user expected-newval t2] inc-ret)))
+      
+    (let [dec-ret (dec-count! m [:interactions-user-user src-user [:star-user tgt-user] t3])
+          expected-newval {:star-user {tgt-user [1 t2]}}]
+      (is (= [tgt-user 1 t2] (vals (.getCount count-api src-user :star-user tgt-user))))
+      (is (= [:interactions-user-user src-user expected-newval t3] dec-ret)))))
 
 (let [cache-info (mock-cache-info)
       record-fn (partial record! cache-info noop-metrics)

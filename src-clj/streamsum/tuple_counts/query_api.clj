@@ -2,7 +2,8 @@
   "CountSummaryImpl is an implementation of the CountSummary interface that can be used to access the provided tuple count structure."
   (:require [clojure.data.priority-map :as pm]
             [clojure.algo.generic.functor :refer [fmap]])
-  (:import [streamsum.tuple_counts CountSummary CountSummary$CountTriple]))
+  (:import [streamsum.tuple_counts CountSummary CountSummary$CountTriple]
+           [java.util Map]))
 
 (declare count-sum-for-actions)
 
@@ -61,7 +62,7 @@
 (defn count-sum-for-actions
   "Sum all event counts for a given subject and optional sequence of actions"
   [db subj & [actions]]
-  (let [counts-by-action (db subj)
+  (let [counts-by-action (get db subj)
         actions-map (if actions
                       (select-keys counts-by-action actions)
                       ;; else return all actions for the given subject

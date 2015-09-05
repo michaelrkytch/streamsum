@@ -17,15 +17,17 @@
   TODO: 
   * Use RRB tree to implement proper distinct last-n
   * Extensibility of assoc functions
+  * convention for mapping tuples to 'undo' operations (dec-count! dissoc!, etc)
 "
   (:require [com.stuartsierra.component :as component]
             [amalloy.ring-buffer :as rb]
             [clojure.tools.logging :as log]
             [streamsum.protocols :as metrics]
-            [streamsum.protocols :as proto])
+            [streamsum.protocols :as proto]
+            [streamsum.tuple-counts.update :as tc])
   (:import  [java.util Map]))
 
-(declare assoc-cache! assoc-last-n! assoc-count!)
+(declare assoc-cache! assoc-last-n! inc-count!)
 
 (defrecord Caches [cache-config 
                    cache-server 
@@ -49,7 +51,7 @@
                                  (let [update-fn (case cache-type
                                                    :associative assoc-cache!
                                                    :lastn #(assoc-last-n! %1 %2 20)
-                                                   :count assoc-count!)]
+                                                   :count inc-count!)]
                                    [cache-key update-fn]))
                                cache-config))]
       (-> this
@@ -77,11 +79,12 @@
 
 
 (defn record!
-  "The record function takes a tuple of the form [cache-key sub obj time] and updates the appropriate cache based on the value of cache-key.
-  Returns a tuple to be placed on the cache persistence queue of the form [cache-key key val time]."
+  "The record function takes a 4-tuple of the form [cache-key key val time] and updates the appropriate cache based on the value of cache-key.
+  Returns a tuple to be placed on the cache persistence queue of the form [cache-key key val' time], where val' is the
+  value associated with key in the cache.  For some cache update functions val' may be different than the original tuple val."
   [cache-info
    metrics-component
-   [cache-key key obj time :as tuple]]
+   [cache-key _ _ _ :as tuple]]
   (when tuple
     (log/debug "Recording " tuple)
     (let [cache (get (:caches cache-info) cache-key)
@@ -97,8 +100,10 @@
       )))
 
 (defn assoc-cache! 
-  "Mutate the cache, associating key s with value o, replacing any previous value.
-  Returns the stored tuple."
+  "Accepts tuples of the form [cache-key s o time]
+  Mutate the cache, associating key s with value o, replacing any previous value.
+  Ignores any other elements in the tuple.
+  Returns [cache-key s o time]."
   [^Map cache 
    [_ s o _ :as tuple]]
   (.put cache s o)
@@ -111,7 +116,7 @@
 ;; or we could use a simple vector, and just enforce uniqueness with a linear search each time
 ;; Or, we could do a copy-on-write of a simple array 
 (defn assoc-last-n!
-  "Mutate the last-n cache, adding an association from userid to objid, evicting the oldest association if necessary.
+  "Mutate the last-n cache, adding an association from key to obj, evicting the oldest association if necessary.
   Returns a tuple [cache key lastn t] where lastn is the last-n value stored in the cache."
   [^Map cache 
    [cache-key key obj t]
@@ -126,12 +131,21 @@
     [cache-key key lastn t]))
 
 
-(defn assoc-count!
-  "TODO"
-  [tuple]
-  tuple)
+(defn inc-count!
+  "Accepts tuples of the form [cache-key s [a o] time].  
+  Calls (tuple-counts.update.inc-count! [s a o time]) to update the count cache."
+  [^Map cache 
+   [cache-key s [a o] time :as tuple]]
+  (let [new-val (tc/inc-count! cache [s a o time])]
+    [cache-key s new-val time]))
 
-
+(defn dec-count!
+  "Accepts tuples of the form [cache-key s [a o] time].  
+  Calls (tuple-counts.update.dec-count! [s a o time]) to update the count cache."
+  [^Map cache 
+   [cache-key s [a o] time :as tuple]]
+  (let [new-val (tc/dec-count! cache [s a o time])]
+    [cache-key s new-val time]))
 
 (defn default-cache-server
   "An in-proces CacheServer implemented using Java HashMaps"

@@ -16,6 +16,8 @@
 
   ["ANNOTATE_DOC" user doc time]   [[:annotate-user-doc user doc time]]
 
+  ["STAR_MESSAGE" source-user target-user time] [[:interactions-user-user source-user [:star-user target-user] time]]
+
 )
  
 
@@ -38,6 +40,7 @@
     :upload-doc-user [:associative "original uploader of each document"]
     :upload-user-doc [:lastn "last N documents which a user uploaded"]
     :annotate-user-doc [:lastn "last N documents which a user annotated"]
+    :interactions-user-user [:count "Count of user-user interactions of various types, keyed by subject user"]
     }
 
    ;;
