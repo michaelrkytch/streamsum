@@ -24,10 +24,11 @@
                     ["CREATE_CHAT" :u2 :th2 2]
                     ["REPLY_CHAT" :u2 :th1 3]
                     ["CREATE_DOC" :u3 :d1 3]
+                    ["STAR_MESSAGE" :u2 :u1 4]
                     0
                     ["UNKNOWN" 1 2 3]
                     [:malformed]
-                    ["ANNOTATE_DOC" :u2 :d1 4]])
+                    ["ANNOTATE_DOC" :u2 :d1 5]])
 
 ;; filter out malformed source events so we won't throw exceptions on processing
 (def only-valid-source-events (filter #(and (vector? %) (= 4 (count %))) 
@@ -40,7 +41,8 @@
                          [:post-user-thread :u2 :th1 3]
                          [:upload-doc-user :d1 :u3 3]
                          [:upload-user-doc :u3 :d1 3]
-                         [:annotate-user-doc :u2 :d1 4]])
+                         [:interactions-user-user :u2 [:star-user :u1] 4]
+                         [:annotate-user-doc :u2 :d1 5]])
 
 (defn validate-caches 
   "The specific cache mappings are tested elsewhere, so we just validate that the caches have the expected number of entries." 
@@ -53,7 +55,8 @@
     2 :post-user-thread
     1 :upload-doc-user
     1 :upload-user-doc
-    1 :annotate-user-doc))
+    1 :annotate-user-doc
+    1 :interactions-user-user))
 
 (defn validate-metrics-map 
   [m]
@@ -62,7 +65,8 @@
     3 :post-user-thread
     1 :upload-doc-user
     1 :upload-user-doc
-    1 :annotate-user-doc))
+    1 :annotate-user-doc
+    1 :interactions-user-user))
 
 (defn put-events [^BlockingQueue in-q]
   (doseq [e source-events]
