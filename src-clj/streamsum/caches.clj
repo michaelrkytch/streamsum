@@ -160,4 +160,7 @@
           ;; else create a new (mutable) map
           (let [m (java.util.HashMap.)]
             (swap! cache-map #(assoc % map-name m))
-            m))))))
+            m)))
+
+      Object
+      (toString [this] (str "default-cache-server caches: " @cache-map)))))

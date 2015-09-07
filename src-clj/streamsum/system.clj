@@ -21,7 +21,7 @@
     (fn [tuple#]
        {:pre [(vector? tuple#) 
               (= 4 (count tuple#))]}
-       (log/debugf "Transforming " tuple#)
+       (log/debugf "Transforming %s" tuple#)
        (let [output-tuples# (match tuple#
                                    ~@patterns
                                    :else '())]
