@@ -16,7 +16,8 @@
   :test-paths ["test-clj"]
   :java-source-paths ["src-java"]
   :global-vars {*warn-on-reflection* true}
-  :aot [streamsum.protocols]
+  :aot [streamsum.protocols
+        streamsum.tuple-counts.query-api]
   :repositories [["osn-internal-local" {:url "http://af.osn.oraclecorp.com/artifactory/internal-local"
                                         :snapshots false
                                         :sign-releases false}]])
