@@ -37,15 +37,17 @@
   increments the count for the given [action object] key 
   and replaces the timestamp if it is greater than the previous value"
   [v [action object timestamp]]
-  (if (s/select-one [action object] v)
-    ;; If the key is present already, then update the leaf
-    (->> v
-         ;; increment count
-         (s/transform [action object s/FIRST] inc)
-         ;; Replace the timestamp if newer than the previous value
-         (s/setval [action object s/LAST #(> timestamp %)] timestamp))
-    ;; else the path is not present; we need to create a new [count timestamp] leaf
-    (s/setval [action object] [1 timestamp] v)))
+  (let [newer-time (fn [^Comparable prev-time]
+                     (pos? (.compareTo ^Comparable timestamp prev-time)))]
+    (if (s/select-one [action object] v)
+      ;; If the key is present already, then update the leaf
+      (->> v
+           ;; increment count
+           (s/transform [action object s/FIRST] inc)
+           ;; Replace the timestamp if newer than the previous value
+           (s/setval [action object s/LAST newer-time] timestamp))
+      ;; else the path is not present; we need to create a new [count timestamp] leaf
+      (s/setval [action object] [1 timestamp] v))))
 
 (defn inc-count!
   "Increments the count for the given key and replaces the timestamp if it is greater than the previous value.

@@ -2,7 +2,8 @@
   (:require  [clojure.test :refer :all]
              [com.rpl.specter :as s]
              [streamsum.tuple-counts.update :refer :all])
-  (:import [java.util Map HashMap]))
+  (:import [java.util Map HashMap]
+           [java.sql Timestamp]))
 
 (def ^Map simple-db {:s0 
                 {:a0 
@@ -94,3 +95,17 @@
     (is (= [4 1001] (s/select-one [:s0 :a0 :o1] db)))
     (is (= [0 1002] (s/select-one [:s1 :a0 :o1] db)))
     (is (= nil (s/select-one [:s0 :a-does-not-exist :o1] db)))))
+
+;; CountSummary API assumes the timestamps are of type Timestamp
+;; although the update logic should work for any Comparable
+(deftest test-timestamps
+  (let [db (HashMap.)
+        t1 (Timestamp. 0)
+        t2 (Timestamp. 10000)
+        t3 (Timestamp. 20000)]
+    (inc-count! db [:s0 :a0 :o0 t1])
+    (inc-count! db [:s0 :a0 :o0 t3])
+    (inc-count! db [:s0 :a0 :o0 t2])
+
+    (is (= [3 t3] (s/select-one [:s0 :a0 :o0] db)))))
+
