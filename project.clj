@@ -1,4 +1,4 @@
-(defproject michaelrkytch/streamsum "0.1.1"
+(defproject michaelrkytch/streamsum "0.1.2"
   :description "Configuration-driven summarization of event streams."
   :url "https://github.com/michaelrkytch/streamsum"
   :license {:name "Eclipse Public License"
@@ -11,7 +11,9 @@
                  [org.clojure/core.match "0.3.0-alpha4"]
                  [com.stuartsierra/component "0.2.3"]
                  [org.clojure/core.async "0.1.346.0-17112a-alpha"]
-                 [com.rpl/specter "0.6.2"]]
+                 [com.rpl/specter "0.6.2"]
+                 ;; Needed for JDK 1.6 support
+                 [org.codehaus.jsr166-mirror/jsr166y "1.7.0"]]
   :source-paths ["src-clj"]
   :test-paths ["test-clj"]
   :java-source-paths ["src-java"]
