@@ -5,7 +5,7 @@
             [streamsum.tuple-counts.query-api :as q]
             [com.stuartsierra.component :as component]
             [clojure.test :refer :all])
-   (:import [java.util Map]
+   (:import [java.util Map HashMap]
             [streamsum.tuple_counts CountSummary]))
 
 
@@ -17,61 +17,100 @@
       validate-config
       :cache-config))
 
-(defn mock-cache-info 
-  "Return a new Caches component for testing.  Optionally pass a cache server instance, else will
+(defn mock-caches-component
+  "Return a new Caches component for testing. Optionally pass a cache server instance, else will
   use mock cache server"
-  ([] (mock-cache-info (default-cache-server)))
+  ([] (mock-caches-component (default-cache-server)))
   ([cache-server]
-   ;; This is sort of a hack -- we define a system and start it, then return the Caches component
-   ;; The test never stops the system -- we depend on the fact that the system does not hold onto 
-   ;; external resources, so does not need to be shutdown
-   (let [system (component/start 
-                 (component/system-map
-                  :cache-info (new-caches (mock-cache-config) cache-server)))]
-     (:cache-info system))))
+   (new-caches (mock-cache-config) cache-server)))
+
+(defmacro with-mock-caches
+  "Starts a mock Caches component before body is evaluated.  
+  Sets these bindings for use in test cases:
+    caches-component: mock caches component
+    record-fn: a caches/record! function bound with the mock caches-component and a noop-metrics component
+    t: current time in millis"
+
+  ;; stopping the caches component is not necessary, since there
+  ;; it owns no external resoures.  Allowing it to be GC'd would be sufficient
+
+  [caches-component record-fn t & body]
+
+  `(let [~caches-component (component/start (mock-caches-component))
+         ~record-fn (partial record! ~caches-component noop-metrics)
+         ~t (System/currentTimeMillis)]
+     ~@body))
+
+
+(deftest test-configure-cache-mappings
+  (let [mappings (configure-cache-mappings (mock-cache-config) (default-cache-server))]
+    (is (instance? streamsum.caches.AssociativeCache (:create-thread-user mappings)))
+    (is (instance? streamsum.caches.LastNCache (:post-user-thread mappings)))
+    (is (instance? streamsum.caches.CountCache (:interactions-user-user mappings)))))
 
 (deftest test-cache-server
   (let [cm1 (default-cache-server)
         cm2 (default-cache-server)]
-    (let [cache-info (component/start (new-caches (mock-cache-config) cm1))
-          ^Map m (get-cache cache-info :create-thread-user)
+    (let [caches-comp (component/start (new-caches (mock-cache-config) cm1))
+          ^Map m (get-cache caches-comp :create-thread-user)
           ]
       (is (instance? Map m))
       (.put m "key1" "val1")
       ;; CacheServer and its maps are mutable, so our element should still be in there
-      (is (contains? (get-cache cache-info :create-thread-user) "key1")))
+      (is (contains? (get-cache caches-comp :create-thread-user) "key1")))
 
     ;; test that we can succesfully use a new cache-server
-    (let [cache-info (component/start (new-caches (mock-cache-config) cm2))
-          ^Map m (get-cache cache-info :create-thread-user)]
+    (let [caches-comp (component/start (new-caches (mock-cache-config) cm2))
+          ^Map m (get-cache caches-comp :create-thread-user)]
       (is (instance? Map m))
       ;; This should be a different map, since it came from a different CacheServer
-      (is (not (contains? (get-cache cache-info :create-thread-user) "key1"))))))
+      (is (not (contains? (get-cache caches-comp :create-thread-user) "key1"))))))
 
-(deftest test-assoc-last-n-user-obj
-  (let [cache-info (mock-cache-info)
-        m (get-cache cache-info :upload-user-doc)
+(deftest test-AssociativeCache
+  (let [m (HashMap.)
+        cache (->AssociativeCache m)
         userid 123
-        t (System/currentTimeMillis)
-        ;; configure buffer size to be 4
-        assoc-last-n #(assoc-last-n! %1 %2 4)]
+        t (System/currentTimeMillis)]
+    
+    ;; set one entry
+    (proto/update! cache [:upload-user-doc userid 1000 t])
+    (is (= 1000 (get m userid)))
+    ;; replace value
+    (proto/update! cache [:upload-user-doc userid 2000 t])
+    (is (= 2000 (get m userid)))
+    ;; remove value
+    (proto/remove! cache [:upload-user-doc userid nil t])
+    (is (nil? (get m userid)))
+    ))
+
+(deftest test-LastNCache
+  (let [m (HashMap.)
+        cache (->LastNCache m 4)
+        userid 123
+        t (System/currentTimeMillis)]
 
     ;; Record one upload for user 123
-    (assoc-last-n m [:upload-user-doc userid 1000 t])
+    (proto/update! cache [:upload-user-doc userid 1000 t])
     (is (= [1000] (seq (get m userid))))
     ;; Record three more uploads
     (doseq [docid [1001 1002 1003]]
-      (assoc-last-n m [:upload-user-doc userid docid t]))
+      (proto/update! cache [:upload-user-doc userid docid t]))
     (is (= [1000 1001 1002 1003] (seq (get m userid))))
     ;; Record two more uploads, replacing the first two
     (doseq [docid [1004 1005]]
-      (assoc-last-n m [:upload-user-doc userid docid t]))
-    (is (= [1002 1003 1004 1005] (seq (get m userid))))      
+      (proto/update! cache [:upload-user-doc userid docid t]))
+    (is (= [1002 1003 1004 1005] (seq (get m userid))))
+    ;; Undo one of the updates
+    (proto/remove! cache [:upload-user-doc userid 1004 t])
+    (is (= [1002 1003 1005] (seq (get m userid))))
+    ;; Undo a tuple that is not represented
+    (proto/remove! cache [:upload-user-doc userid 9999 t])
+    (is (= [1002 1003 1005] (seq (get m userid))))
     ))
 
-(deftest test-count-cache
-  (let [cache-info (mock-cache-info)
-        m (get-cache cache-info :interactions-user-user)
+(deftest test-CountCache
+  (let [m (HashMap.)
+        cache (->CountCache m)
         src-user 100
         tgt-user 101
         t (System/currentTimeMillis)
@@ -79,54 +118,59 @@
         t3 (+ 10000 t2)
         ^CountSummary count-api (q/->CountSummaryImpl m)]
 
-    (let [inc-ret (inc-count! m [:interactions-user-user src-user [:star-user tgt-user] t])
+    (let [inc-ret (proto/update! cache [:interactions-user-user src-user [:star-user tgt-user] t])
           expected-newval {:star-user {tgt-user [1 t]}}]
       (is (= [tgt-user 1 t] (vals (.getCount count-api src-user :star-user tgt-user))))
       (is (= [:interactions-user-user src-user expected-newval t] inc-ret)))
 
-    (let [inc-ret (inc-count! m [:interactions-user-user src-user [:star-user tgt-user] t2])
+    (let [inc-ret (proto/update! cache [:interactions-user-user src-user [:star-user tgt-user] t2])
           expected-newval {:star-user {tgt-user [2 t2]}}]
       (is (= [tgt-user 2 t2] (vals (.getCount count-api src-user :star-user tgt-user))))
       (is (= [:interactions-user-user src-user expected-newval t2] inc-ret)))
       
-    (let [dec-ret (dec-count! m [:interactions-user-user src-user [:star-user tgt-user] t3])
+    (let [dec-ret (proto/remove! cache [:interactions-user-user src-user [:star-user tgt-user] t3])
           expected-newval {:star-user {tgt-user [1 t2]}}]
       (is (= [tgt-user 1 t2] (vals (.getCount count-api src-user :star-user tgt-user))))
       (is (= [:interactions-user-user src-user expected-newval t3] dec-ret)))))
 
-(let [cache-info (mock-cache-info)
-      record-fn (partial record! cache-info noop-metrics)
-      t (System/currentTimeMillis)]
+;; 
+;; Tests of record! function
 
-  (deftest test-record-ignored-event
-    (is (nil? (record-fn [:foo-user-doc 123 456 t]))))
 
-  (deftest test-createdChat-event
+(deftest test-record-ignored-event
+  (with-mock-caches caches-comp record-fn t
+    (is (nil? (record-fn [:foo-user-doc 123 456 t])))))
+
+(deftest test-createdChat-event
+  (with-mock-caches caches-comp record-fn t 
     (record-fn [:create-thread-user 99 1 t])
     (record-fn [:post-user-thread 1 99 t])
-    (is (= 1 (get (get-cache cache-info :create-thread-user) 99)))
-    (is (= [99] (get (get-cache cache-info :post-user-thread) 1))))
+    (is (= 1 (get (get-cache caches-comp :create-thread-user) 99)))
+    (is (= [99] (get (get-cache caches-comp :post-user-thread) 1)))))
 
-  (deftest test-repliedToChat-event
+(deftest test-repliedToChat-event
+  (with-mock-caches caches-comp record-fn t 
     (record-fn [:post-user-thread 2 99])
-    (is (= [99] (get (get-cache cache-info :post-user-thread) 2))))
+    (is (= [99] (get (get-cache caches-comp :post-user-thread) 2)))))
 
-  (deftest test-createdDoc-event
+(deftest test-createdDoc-event
+  (with-mock-caches caches-comp record-fn t 
     (record-fn [:upload-doc-user 999 111 t])
     (record-fn [:upload-user-doc 111 999 t])
-    (is (= 111 (get (get-cache cache-info :upload-doc-user) 999)))
-    (is (= [999] (get (get-cache cache-info :upload-user-doc) 111))))
+    (is (= 111 (get (get-cache caches-comp :upload-doc-user) 999)))
+    (is (= [999] (get (get-cache caches-comp :upload-user-doc) 111)))))
 
-  (deftest test-annotatedDoc-event
+(deftest test-annotatedDoc-event
+  (with-mock-caches caches-comp record-fn t 
     (record-fn [:annotate-user-doc 112 999 t])
-    (is (= [999] (get (get-cache cache-info :annotate-user-doc) 112))))
+    (is (= [999] (get (get-cache caches-comp :annotate-user-doc) 112)))))
 
-  ;; Test that we can assoc a nil value to replace a previous non-nil value
-  ;; in an associative cache
-  (deftest test-assoc-nil
+;; Test that we can assoc a nil value to replace a previous non-nil value
+;; in an associative cache
+(deftest test-assoc-nil
+  (with-mock-caches caches-comp record-fn t 
     (record-fn [:create-thread-user 1009 2000 t])
     (record-fn [:create-thread-user 1009 nil t])
-    (is (= nil (get (get-cache cache-info :create-thread-user) 1009))))
+    (is (= nil (get (get-cache caches-comp :create-thread-user) 1009)))))
 
-  )
-
+     

@@ -1,8 +1,8 @@
 (ns streamsum.system-test
   (:require [streamsum.system :refer :all]
             [streamsum.protocols :as proto]
-            [streamsum.caches :refer [default-cache-server]]
-            [streamsum.caches-test :refer [mock-cache-info]]
+            [streamsum.caches :refer [default-cache-server get-cache]]
+            [streamsum.caches-test :refer [with-mock-caches]]
             [clojure.test :refer :all]
             [clojure.core.async :as async]
             [com.stuartsierra.component :as component])
@@ -46,11 +46,11 @@
 
 (defn validate-caches 
   "The specific cache mappings are tested elsewhere, so we just validate that the caches have the expected number of entries." 
-  [caches]
+  [caches-component]
   (are [cache-size cache-name] (= cache-size (->> cache-name
-                                                 (get caches)
-                                                 keys
-                                                 count))
+                                                  (get-cache caches-component)
+                                                  keys
+                                                  count))
     2 :create-thread-user
     2 :post-user-thread
     1 :upload-doc-user
@@ -78,29 +78,29 @@
     (is (nil? (.poll out-q)) "There should be nothing left on out-q at this point"))
 
 (deftest test-event-processing-xform
-  (let [cache-info (mock-cache-info)
-        xf (event-processing-xform cache-info noop-metrics (tuple-xform) nil)
-        out-records (into [] xf only-valid-source-events)]
-    (is (= (count translated-tuples) (count out-records)))
-    (validate-caches (:caches cache-info))))
+  (with-mock-caches caches-comp _ _ 
+    (let [xf (event-processing-xform caches-comp noop-metrics (tuple-xform) nil)
+          out-records (into [] xf only-valid-source-events)]
+      (is (= (count translated-tuples) (count out-records)))
+      (validate-caches caches-comp))))
 
 (deftest test-output-encoding
-  ;; test encoder puts tuple elements in a map
-  (let [encoder (reify proto/Encode
-                  (encode [this cache-key key val time]
-                    {:cache-key cache-key
-                     :key key
-                     :val val
-                     :time time}))
-        cache-info (mock-cache-info)
-        xf (event-processing-xform cache-info noop-metrics (tuple-xform) encoder)
-        out-records (into [] xf only-valid-source-events)]
-    (is (= (count translated-tuples) (count out-records)))
-    ;; spot-check form of first output record
-    (is (= :create-thread-user
-           (:cache-key (first out-records))))
-    (is (= :th1 
-           (:key (first out-records))))))
+  (with-mock-caches caches-comp _ _ 
+    ;; test encoder puts tuple elements in a map
+    (let [encoder (reify proto/Encode
+                    (encode [this cache-key key val time]
+                      {:cache-key cache-key
+                       :key key
+                       :val val
+                       :time time}))
+          xf (event-processing-xform caches-comp noop-metrics (tuple-xform) encoder)
+          out-records (into [] xf only-valid-source-events)]
+      (is (= (count translated-tuples) (count out-records)))
+      ;; spot-check form of first output record
+      (is (= :create-thread-user
+             (:cache-key (first out-records))))
+      (is (= :th1 
+             (:key (first out-records)))))))
 
 (deftest test-wrap-channel-assertions
   (let [ch (async/chan 1)]
@@ -120,25 +120,25 @@
       (is (nil? (async/<!! ch))))))
 
 (deftest test-event-processing-channel
-  (let [cache-info (mock-cache-info)
-        ch (event-processing-channel cache-info noop-metrics (tuple-xform) nil)
-        ;; puts output records as a single collectionon out-chan
-        out-chan (async/into [] ch)]
-    (async/<!! (async/onto-chan ch source-events))
-    (is (= (count translated-tuples) (count (async/<!! out-chan))))
-    (validate-caches (:caches cache-info))))
+  (with-mock-caches caches-comp _ _ 
+    (let [ch (event-processing-channel caches-comp noop-metrics (tuple-xform) nil)
+          ;; puts output records as a single collectionon out-chan
+          out-chan (async/into [] ch)]
+      (async/<!! (async/onto-chan ch source-events))
+      (is (= (count translated-tuples) (count (async/<!! out-chan))))
+      (validate-caches caches-comp))))
 
 (deftest test-channel-exception
   ;; Exception during processing should be logged and ignored;
   ;; Should not close the channel
   ;; The non-quad source events will throw AssertErrors
-  (let [cache-info (mock-cache-info)
-        ch (event-processing-channel cache-info noop-metrics (tuple-xform) nil)
-        ;; puts output records as a single collectionon out-chan
-        out-chan (async/into [] ch)]
-    (async/<!! (async/onto-chan ch source-events))
-    (is (= (count translated-tuples) (count (async/<!! out-chan))))
-    (validate-caches (:caches cache-info))))
+  (with-mock-caches caches-comp _ _ 
+    (let [ch (event-processing-channel caches-comp noop-metrics (tuple-xform) nil)
+          ;; puts output records as a single collectionon out-chan
+          out-chan (async/into [] ch)]
+      (async/<!! (async/onto-chan ch source-events))
+      (is (= (count translated-tuples) (count (async/<!! out-chan))))
+      (validate-caches caches-comp))))
 
 (deftest test-streamsum-without-metrics 
   (with-queues in-q out-q 20 
@@ -147,7 +147,7 @@
                         component/start)]
       (put-events in-q)
       (validate-out-q out-q)
-      (validate-caches (get-in streamsum [:cache-info :caches]))
+      (validate-caches (:caches-component streamsum))
       (component/stop streamsum))))
 
 (deftest test-metrics
@@ -165,6 +165,6 @@
                         component/start)]
       (put-events in-q)
       (validate-out-q out-q)
-      (validate-caches (get-in streamsum [:cache-info :caches]))
+      (validate-caches (:caches-component streamsum))
       (validate-metrics-map @metrics)
       (component/stop streamsum))))

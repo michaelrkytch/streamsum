@@ -65,7 +65,7 @@
 
 (defn event-processing-xform
   "Returns a transducer that performs the full event transformation."
-  [cache-info metrics-component tuple-xform output-encoder]
+  [caches-component metrics-component tuple-xform output-encoder]
   (let [xform (comp 
                 (map (partial metrics-log-passthrough metrics-component :events-received))
                 (filter #(and (not (nil? %)) (satisfies? proto/Extract %))) ; filter out objects we can't Extract
@@ -73,7 +73,7 @@
                 (map (partial metrics-log-passthrough metrics-component :tuples-extracted))
                 (mapcat tuple-xform)
                 (map (partial metrics-log-passthrough metrics-component :tuples-transformed))
-                (map (partial caches/record! cache-info metrics-component)))]
+                (map (partial caches/record! caches-component metrics-component)))]
     (if output-encoder 
       (comp 
        xform 
@@ -84,8 +84,8 @@
 (defn event-processing-channel
   "Returns an unbuffered channel that will perform the full event transformation.
   Exceptions will be logged and exception-causing transformations will be dropped."
-  [cache-info metrics-component tuple-xform output-encoder]
-  (let [xform (event-processing-xform cache-info metrics-component tuple-xform output-encoder)
+  [caches-component metrics-component tuple-xform output-encoder]
+  (let [xform (event-processing-xform caches-component metrics-component tuple-xform output-encoder)
         ex-handler #(log/warn % "Exception in event transformation.  Aborting process for event.")]
     (async/chan 1 xform ex-handler)))
 
@@ -115,7 +115,7 @@
                       config
                       ;; internally bound
                       processing-channel
-                      cache-info
+                      caches-component
                       metrics-component
                       output-encoder
                       ]
@@ -127,7 +127,7 @@
       this
       ;; else start component
       (do (log/info "Initializing processing pipeline.")
-          (let [ch (event-processing-channel cache-info metrics-component (:main-transform config) output-encoder)]
+          (let [ch (event-processing-channel caches-component metrics-component (:main-transform config) output-encoder)]
             (wrap-channel-with-queues ch in-q out-q)
             (assoc this :processing-channel ch)))))
   (stop [this]
@@ -181,9 +181,9 @@
      (component/system-map
       :cache-server cache-server
       :metrics-component metrics-component
-      :cache-info (caches/new-caches cache-config cache-server)
+      :caches-component (caches/new-caches cache-config cache-server)
       :process (component/using (new-processor config in-q out-q output-encoder)
-                                [:cache-info :metrics-component])))))
+                                [:caches-component :metrics-component])))))
 
 (defn cache-server [streamsum]
-  (get-in streamsum [:cache-info :cache-server]))
+  (get-in streamsum [:caches-component :cache-server]))
