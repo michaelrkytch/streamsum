@@ -8,21 +8,25 @@
    (:import [java.util Map HashMap]
             [streamsum.tuple_counts CountSummary]))
 
+(defn example-config
+  "Read example config file"
+  []
+  (-> "example/streamsum/config.clj"
+      read-config-file
+      validate-config))
 
 (defn mock-cache-config 
   "Return a cache configuration map for testing, using data in example config file"
   []
-  (-> "example/streamsum/config.clj"
-      read-config-file
-      validate-config
-      :cache-config))
+  (:cache-config (example-config)))
 
 (defn mock-caches-component
   "Return a new Caches component for testing. Optionally pass a cache server instance, else will
   use mock cache server"
   ([] (mock-caches-component (default-cache-server)))
   ([cache-server]
-   (new-caches (mock-cache-config) cache-server)))
+   (let [{:keys [cache-config cache-factory-fns]} (example-config)]
+     (new-caches cache-config cache-server cache-factory-fns))))
 
 (defmacro with-mock-caches
   "Starts a mock Caches component before body is evaluated.  
@@ -42,16 +46,32 @@
      ~@body))
 
 
+;; Test cache type that ignores all updates and removes
+(defrecord DevNullCache [^Map backing-map]
+  proto/TupleCache
+  (update! [this tuple] tuple)
+  (remove! [this tuple] tuple)
+  (backingMap [this] backing-map))
+
+(def extra-cache-factories
+  {:null-cache ->DevNullCache})
+
 (deftest test-configure-cache-mappings
-  (let [mappings (configure-cache-mappings (mock-cache-config) (default-cache-server))]
-    (is (instance? streamsum.caches.AssociativeCache (:create-thread-user mappings)))
-    (is (instance? streamsum.caches.LastNCache (:post-user-thread mappings)))
-    (is (instance? streamsum.caches.CountCache (:interactions-user-user mappings)))))
+  (let [cache-config {:assoc [:associative "doc"]
+                      :lastn [:lastn "doc"]
+                      :count [:count "doc"]
+                      :null [:null-cache "doc"]}
+        mappings (configure-cache-mappings cache-config (default-cache-server) extra-cache-factories)]
+    (is (instance? streamsum.caches.AssociativeCache (:assoc mappings)))
+    (is (instance? streamsum.caches.LastNCache (:lastn mappings)))
+    (is (instance? streamsum.caches.CountCache (:count mappings)))
+    (is (instance? DevNullCache (:null mappings)))))
+
 
 (deftest test-cache-server
   (let [cm1 (default-cache-server)
         cm2 (default-cache-server)]
-    (let [caches-comp (component/start (new-caches (mock-cache-config) cm1))
+    (let [caches-comp (component/start (mock-caches-component cm1))
           ^Map m (get-cache caches-comp :create-thread-user)
           ]
       (is (instance? Map m))
@@ -60,7 +80,7 @@
       (is (contains? (get-cache caches-comp :create-thread-user) "key1")))
 
     ;; test that we can succesfully use a new cache-server
-    (let [caches-comp (component/start (new-caches (mock-cache-config) cm2))
+    (let [caches-comp (component/start (mock-caches-component cm2))
           ^Map m (get-cache caches-comp :create-thread-user)]
       (is (instance? Map m))
       ;; This should be a different map, since it came from a different CacheServer

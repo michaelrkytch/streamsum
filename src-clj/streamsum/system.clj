@@ -43,6 +43,10 @@
   (assert (ifn? (:main-transform config)) "Invalid configuration.  :main-transform not defined to be a transform function")
   (assert (:cache-config config) "Incomplete configuration. :cache-config not defined.")
   (assert (map? (:cache-config config)) "Invalid configuration.  cache-config should be a map.")
+  (when-let [cache-factory-fns (:cache-factory-fns config)]
+    (assert (map? cache-factory-fns) "Invalid configuration.  cache-factory-fns should be a map")
+    (map #(assert (ifn? %) (str "Invalid configuration.  Values of cache-factory-fns should be functions.  Found " %))
+         (vals cache-factory-fns)))
   config
   )
 
@@ -171,7 +175,7 @@
    (new-streamsum filepath-or-map in-q out-q metrics-component (caches/default-cache-server) nil))
 
   ([filepath-or-map in-q out-q metrics-component cache-server output-encoder]
-   (let [{:keys [cache-config] :as config} 
+   (let [{:keys [cache-config cache-factory-fns] :as config} 
          (-> (if (string? filepath-or-map)
                (read-config-file filepath-or-map)
                ;; else just use the map directly as config
@@ -181,7 +185,7 @@
      (component/system-map
       :cache-server cache-server
       :metrics-component metrics-component
-      :caches-component (caches/new-caches cache-config cache-server)
+      :caches-component (caches/new-caches cache-config cache-server cache-factory-fns)
       :process (component/using (new-processor config in-q out-q output-encoder)
                                 [:caches-component :metrics-component])))))
 

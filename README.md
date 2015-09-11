@@ -99,7 +99,17 @@ After a tuple is recorded it is put onto the output queue.  This feature can be 
 An implementation of the `Encode` protocol can be provided to transform the output tuples before they are placed on the output queue.
 
 ## Extending cache types
-TODO
+The set of available cache types can be extended by implementing the `TupleCache` protocol, either in Clojure or Java.  In addition, each extended cache type is expected to provide a unary factory function, taking the backing `Map` as an argument and returning a new instance of the cache type.  An example is provided in the `examples/streamsum/config.clj" file.
+
+In the configuration map, extended cache factory functions are provided as a map from keyword to factory function, under the key `:cache-factory-fns`.  For instance the example config file has
+
+```clojure
+ :cache-factory-fns { :keycount ->KeyCountCache }
+```
+
+`TupleCache` instances are expected to always use an externally provided backing `Map` for key-value storage, and should generally not need to maintain internal state.
+
+where `->KeyCountCache` is a unary factory function for the `KeyCountCache` class.
 
 ## Usage
 `streamsum` is intended to be a self-contained subsystem, not a library.  It uses `com.stuartsierra.component` to manage lifecycle.  It spawns threads to do its processing.

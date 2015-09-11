@@ -1,24 +1,20 @@
 (ns streamsum.caches
-  "
-  cache-config is a mapping from cache name (as keyword) to cache type.
+  " This namespace provides the 3 default TupleCache implementations:
+    * associative -- simple kv mapping
+    * lastn -- last N  values are retained per key
+    * count -- each occurrence of a [pred subj obj] is counted, and the associated times may be retained as a sequence.
 
-  There are currently three types of caches:
-  * associative -- simple kv mapping
-  * lastn -- last N  values are retained per key
-  * lastn-distinct -- last N distinct values are retained per key
-  * count -- each occurrence of a [pred subj obj] is counted, and the associated times may be retained as a sequence.
-
-  caches is a table of all the available caches.  Keys match pred field in incoming tuples.  Values are java.util.Map instances.
-  
-  cache-update-fns is a mapping from cache key (keyword) to an update function (used by the record module).
-
+  New cache types can be introduced by extending the TupleCache protocol
   The CacheServer protocol provides a (mutable) cache backing store
+
+  The Caches type is a component encapsulating the cache configuration and the set of configured caches in the system.
+  The new-caches factory function produces a Caches instance given a cache configuration map, a CacheServer instance, 
+  and optionally a map of extended cache factory functions for custom cache types.
 
   TODO: 
   * Use RRB tree to implement proper distinct last-n
-  * Extensibility of assoc functions
-  * convention for mapping tuples to 'undo' operations (dec-count! dissoc!, etc)
 "
+
   (:require [com.stuartsierra.component :as component]
             [amalloy.ring-buffer :as rb]
             [clojure.tools.logging :as log]
@@ -77,6 +73,7 @@
 
   (backingMap [this] backing-map))
 
+
 (defrecord CountCache [^Map backing-map]
   proto/TupleCache
   
@@ -94,24 +91,31 @@
 
   (backingMap [this] backing-map))
 
+(def default-cache-factories
+  {:associative ->AssociativeCache
+   ;; TODO take buf-size param as config
+   :lastn #(LastNCache. % 20)
+   :count ->CountCache
+   }
+)
 
 (defn configure-cache-mappings 
   "return a map from cache-key to TupleCache instance for all configured caches"
-  [cache-config cache-server]
-  ;; TODO: make this cache-type instantiation extensible
-  (let [create-cache (fn ;; funciton mapping cache config entry to a new [cache-key TupleCache] pair
+  [cache-config cache-server ext-factory-fns]
+  (let [factory-fns (merge default-cache-factories ext-factory-fns)
+        create-cache (fn ;; funciton mapping cache config entry to a new [cache-key TupleCache] pair
                        [[cache-key [cache-type _]]]
                        (let [backing-map (proto/getMap cache-server (name cache-key))
-                             cache-instance (case cache-type
-                               :associative (->AssociativeCache backing-map)
-                               ;; TODO bind config param
-                               :lastn (->LastNCache backing-map 20)
-                               :count (->CountCache backing-map))]
+                             ;; Look up factory function for cache-key and call it
+                             cache-instance ((get factory-fns cache-type) backing-map)]
                          [cache-key cache-instance]))]
     (into {} (map create-cache cache-config))))
 
+
+
 (defrecord Caches [cache-config 
                    cache-server 
+                   cache-factory-fns
                    ;; internally-bound params
                    caches
                    cache-update-fns
@@ -121,7 +125,7 @@
 
   (start [this]
     (-> this
-        (assoc :caches (configure-cache-mappings cache-config cache-server))))
+        (assoc :caches (configure-cache-mappings cache-config cache-server cache-factory-fns))))
   
   (stop [this]
     (-> this
@@ -129,9 +133,10 @@
 
 (defn new-caches 
   "Factory function for Caches component"
-  [cache-config cache-server]
+  [cache-config cache-server & [cache-factory-fns]]
   (map->Caches {:cache-config cache-config
-                :cache-server cache-server}))
+                :cache-server cache-server
+                :cache-factory-fns cache-factory-fns}))
 
 (defn get-tuple-cache 
   "Return the TupleCache instance for the given cache-key"
