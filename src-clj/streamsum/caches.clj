@@ -21,22 +21,23 @@
             [streamsum.protocols :as metrics]
             [streamsum.protocols :as proto]
             [streamsum.tuple-counts.update :as tc])
-  (:import  [java.util Map]))
+  (:import  [java.util Map]
+            [streamsum TupleCache]))
 
 (defrecord AssociativeCache [^Map backing-map]
-  proto/TupleCache
+  TupleCache
 
   ;; For tuple of the form [cache-key s o time],
   ;; associate key s with value o, replacing any previous value.
   ;; Returns [cache-key s o time]
-  (update! [this [_ s o _ :as tuple]]
+  (update [this [_ s o _ :as tuple]]
     (.put backing-map s o)
     tuple)
 
   ;; For tuple of the form [cache-key s o time],
   ;; set value for key k to nil
   ;; Returns [cache-key s nil time]
-  (remove! [this [cache-key s _ time ]]
+  (undoUpdate [this [cache-key s _ time ]]
     (.put backing-map s nil)
     [cache-key s nil time])
 
@@ -49,11 +50,11 @@
 ;; Or, we could do a copy-on-write of a simple array 
 (defrecord LastNCache [^Map backing-map 
                        buf-size]
-  proto/TupleCache
+  TupleCache
 
   ;; Mutate the last-n cache, adding an association from key to val, evicting the oldest association if necessary.
   ;; Returns a tuple [cache key lastn t] where lastn is the last-n value stored in the cache.
-  (update! [this [cache-key key val t]]
+  (update [this [cache-key key val t]]
     (let [lastn (-> backing-map
                     (get key           ; find the cache row
                          ;; If not found, create a new ring buffer to hold last n objids
@@ -65,7 +66,7 @@
 
   ;; Remove the value from the last-n list, if present
   ;; TODO: test
-  (remove! [this [cache-key key val t]]
+  (undoUpdate [this [cache-key key val t]]
     (when-let [buf (get backing-map key)]
       (let [newbuf (into (rb/ring-buffer buf-size) (filter #(not (= val %)) buf))]
         (.put backing-map key newbuf)
@@ -75,17 +76,17 @@
 
 
 (defrecord CountCache [^Map backing-map]
-  proto/TupleCache
+  TupleCache
   
   ;; Accepts tuples of the form [cache-key s [a o] time].  
   ;; Calls (tuple-counts.update.inc-count! [s a o time]) to update the count cache.
-  (update! [this [cache-key s [a o] time]]
+  (update [this [cache-key s [a o] time]]
     (let [new-val (tc/inc-count! backing-map [s a o time])]
       [cache-key s new-val time]))
 
   ;; Accepts tuples of the form [cache-key s [a o] time].  
   ;; Calls (tuple-counts.update.dec-count! [s a o time]) to update the count cache.
-  (remove! [this [cache-key s [a o] time]]
+  (undoUpdate [this [cache-key s [a o] time]]
     (let [new-val (tc/dec-count! backing-map [s a o time])]
       [cache-key s new-val time]))
 
@@ -146,7 +147,7 @@
 (defn get-cache 
   "Return the backing Map for the cache specified by cache-key"
   ^Map [caches-component cache-key]
-  (proto/backingMap (get-tuple-cache caches-component cache-key)))
+  (.backingMap ^TupleCache (get-tuple-cache caches-component cache-key)))
 
 (defn reset-caches! [caches-component]
   (doseq [^Map cache (vals (:caches caches-component))]
@@ -163,12 +164,12 @@
    [cache-key _ _ _ :as tuple]]
   (when tuple
     (log/debug "Recording " tuple)
-    (let [cache (get (:caches caches-component) cache-key)
+    (let [^TupleCache cache (get (:caches caches-component) cache-key)
           ret-tuple (if cache
                       ;; Apply the associated cache update function to the tuple
                       (do 
                         (metrics/log metrics-component cache-key 1)
-                        (proto/update! cache tuple))
+                        (.update cache tuple))
                       ;; else cache-key did not match one of our caches (log returns nil)
                       (log/debug "Tuple predicate " cache-key " did not match any cache in cache configuration."))]
       ret-tuple

@@ -6,7 +6,8 @@
             [com.stuartsierra.component :as component]
             [clojure.test :refer :all])
    (:import [java.util Map HashMap]
-            [streamsum.tuple_counts CountSummary]))
+            [streamsum.tuple_counts CountSummary]
+            [streamsum TupleCache]))
 
 (defn example-config
   "Read example config file"
@@ -48,9 +49,9 @@
 
 ;; Test cache type that ignores all updates and removes
 (defrecord DevNullCache [^Map backing-map]
-  proto/TupleCache
-  (update! [this tuple] tuple)
-  (remove! [this tuple] tuple)
+  TupleCache
+  (update [this tuple] tuple)
+  (undoUpdate [this tuple] tuple)
   (backingMap [this] backing-map))
 
 (def extra-cache-factories
@@ -88,49 +89,49 @@
 
 (deftest test-AssociativeCache
   (let [m (HashMap.)
-        cache (->AssociativeCache m)
+        ^TupleCache cache (->AssociativeCache m)
         userid 123
         t (System/currentTimeMillis)]
     
     ;; set one entry
-    (proto/update! cache [:upload-user-doc userid 1000 t])
+    (.update cache [:upload-user-doc userid 1000 t])
     (is (= 1000 (get m userid)))
     ;; replace value
-    (proto/update! cache [:upload-user-doc userid 2000 t])
+    (.update cache [:upload-user-doc userid 2000 t])
     (is (= 2000 (get m userid)))
     ;; remove value
-    (proto/remove! cache [:upload-user-doc userid nil t])
+    (.undoUpdate cache [:upload-user-doc userid nil t])
     (is (nil? (get m userid)))
     ))
 
 (deftest test-LastNCache
   (let [m (HashMap.)
-        cache (->LastNCache m 4)
+        ^TupleCache cache (->LastNCache m 4)
         userid 123
         t (System/currentTimeMillis)]
 
     ;; Record one upload for user 123
-    (proto/update! cache [:upload-user-doc userid 1000 t])
+    (.update cache [:upload-user-doc userid 1000 t])
     (is (= [1000] (seq (get m userid))))
     ;; Record three more uploads
     (doseq [docid [1001 1002 1003]]
-      (proto/update! cache [:upload-user-doc userid docid t]))
+      (.update cache [:upload-user-doc userid docid t]))
     (is (= [1000 1001 1002 1003] (seq (get m userid))))
     ;; Record two more uploads, replacing the first two
     (doseq [docid [1004 1005]]
-      (proto/update! cache [:upload-user-doc userid docid t]))
+      (.update cache [:upload-user-doc userid docid t]))
     (is (= [1002 1003 1004 1005] (seq (get m userid))))
     ;; Undo one of the updates
-    (proto/remove! cache [:upload-user-doc userid 1004 t])
+    (.undoUpdate cache [:upload-user-doc userid 1004 t])
     (is (= [1002 1003 1005] (seq (get m userid))))
     ;; Undo a tuple that is not represented
-    (proto/remove! cache [:upload-user-doc userid 9999 t])
+    (.undoUpdate cache [:upload-user-doc userid 9999 t])
     (is (= [1002 1003 1005] (seq (get m userid))))
     ))
 
 (deftest test-CountCache
   (let [m (HashMap.)
-        cache (->CountCache m)
+        ^TupleCache cache (->CountCache m)
         src-user 100
         tgt-user 101
         t (System/currentTimeMillis)
@@ -138,17 +139,17 @@
         t3 (+ 10000 t2)
         ^CountSummary count-api (q/->CountSummaryImpl m)]
 
-    (let [inc-ret (proto/update! cache [:interactions-user-user src-user [:star-user tgt-user] t])
+    (let [inc-ret (.update cache [:interactions-user-user src-user [:star-user tgt-user] t])
           expected-newval {:star-user {tgt-user [1 t]}}]
       (is (= [tgt-user 1 t] (vals (.getCount count-api src-user :star-user tgt-user))))
       (is (= [:interactions-user-user src-user expected-newval t] inc-ret)))
 
-    (let [inc-ret (proto/update! cache [:interactions-user-user src-user [:star-user tgt-user] t2])
+    (let [inc-ret (.update cache [:interactions-user-user src-user [:star-user tgt-user] t2])
           expected-newval {:star-user {tgt-user [2 t2]}}]
       (is (= [tgt-user 2 t2] (vals (.getCount count-api src-user :star-user tgt-user))))
       (is (= [:interactions-user-user src-user expected-newval t2] inc-ret)))
       
-    (let [dec-ret (proto/remove! cache [:interactions-user-user src-user [:star-user tgt-user] t3])
+    (let [dec-ret (.undoUpdate cache [:interactions-user-user src-user [:star-user tgt-user] t3])
           expected-newval {:star-user {tgt-user [1 t2]}}]
       (is (= [tgt-user 1 t2] (vals (.getCount count-api src-user :star-user tgt-user))))
       (is (= [:interactions-user-user src-user expected-newval t3] dec-ret)))))

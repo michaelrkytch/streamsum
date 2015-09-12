@@ -99,7 +99,7 @@ After a tuple is recorded it is put onto the output queue.  This feature can be 
 An implementation of the `Encode` protocol can be provided to transform the output tuples before they are placed on the output queue.
 
 ## Extending cache types
-The set of available cache types can be extended by implementing the `TupleCache` protocol, either in Clojure or Java.  In addition, each extended cache type is expected to provide a unary factory function, taking the backing `Map` as an argument and returning a new instance of the cache type.  An example is provided in the `examples/streamsum/config.clj" file.
+The set of available cache types can be extended by implementing the `TupleCache` interface.  In addition, each extended cache type is expected to provide a unary factory function, taking the backing `Map` as an argument and returning a new instance of the cache type.  An example is provided in the `examples/streamsum/config.clj" file.
 
 In the configuration map, extended cache factory functions are provided as a map from keyword to factory function, under the key `:cache-factory-fns`.  For instance the example config file has
 
@@ -134,9 +134,6 @@ The client application puts events on the input queue and consumes cache update 
 * ability to provide Metrics implementation by classname in config file
 * ability to provide an Extractor class by classname.  When provided this takes precedence over type extensions of Extract
 * Allow caches to pick up configuration parameters (e.g. size of last-N associative cache)
-
-#### Extensible cache types
-The integrating app provides a cache update function and maps that to a cache type key.
 
 ## License
 

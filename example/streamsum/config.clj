@@ -26,15 +26,16 @@
 ;; Custom cache classes do not have to be defined in the config file, they
 ;; just need to be present on the classpath.
 ;;
+(import '[streamsum TupleCache])
 (defrecord KeyCountCache [^java.util.Map backing-map]
-  proto/TupleCache
+  TupleCache
 
-  (update! [this [cache-key key val time]] 
+  (update [this [cache-key key val time]] 
     (let [newval (inc (get backing-map key 0))]
       (.put backing-map key newval)
       [cache-key key newval time]))
 
-  (remove! [this [cache-key key val time]]
+  (undoUpdate [this [cache-key key val time]]
     (let [oldval (get backing-map key 0)
           ;; decrement if positive, else leave oldval as-is
           newval (if (pos? oldval)
