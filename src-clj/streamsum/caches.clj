@@ -107,9 +107,9 @@
         create-cache (fn ;; funciton mapping cache config entry to a new [cache-key TupleCache] pair
                        [[cache-key [cache-type _]]]
                        (let [backing-map (proto/getMap cache-server (name cache-key))
-                             ;; Look up factory function for cache-key and call it
-                             cache-instance ((get factory-fns cache-type) backing-map)]
-                         [cache-key cache-instance]))]
+                             cache-factory (get factory-fns cache-type)]
+                         (assert (not (nil? cache-factory)) (str  "No factory function found for cache type " cache-type))
+                         [cache-key (cache-factory backing-map)]))]
     (into {} (map create-cache cache-config))))
 
 
