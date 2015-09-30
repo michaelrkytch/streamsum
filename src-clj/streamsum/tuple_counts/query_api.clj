@@ -54,8 +54,11 @@
 
 (defn merge-leaves 
   "Merge two [count timestamp] pairs by summing counts and taking largest time"
-  [[count1 time1] [count2 time2]]
-  [(+ count1 count2) (max time1 time2)])
+  [[count1 ^Comparable time1] [count2 ^Comparable time2]]
+  (let [max-time (if (pos? (.compareTo time1 time2))
+                  time1
+                  time2)]
+    [(+ count1 count2) max-time]))
 
 (defn counts-for-actions-map
   "Return CountTriple records for a subtree of actions { action { object [count timestamp] } }"
