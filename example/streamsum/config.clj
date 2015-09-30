@@ -22,7 +22,7 @@
  
 ;;
 ;; Example of a custom cache type
-;; This exmaple just counts the number of updates to each key.
+;; This example just counts the number of updates to each key.
 ;; Custom cache classes do not have to be defined in the config file, they
 ;; just need to be present on the classpath.
 ;;

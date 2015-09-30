@@ -104,7 +104,7 @@
   "return a map from cache-key to TupleCache instance for all configured caches"
   [cache-config cache-server ext-factory-fns]
   (let [factory-fns (merge default-cache-factories ext-factory-fns)
-        create-cache (fn ;; funciton mapping cache config entry to a new [cache-key TupleCache] pair
+        create-cache (fn ;; function mapping cache config entry to a new [cache-key TupleCache] pair
                        [[cache-key [cache-type _]]]
                        (let [backing-map (proto/getMap cache-server (name cache-key))
                              cache-factory (get factory-fns cache-type)]

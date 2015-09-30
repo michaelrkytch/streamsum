@@ -7,6 +7,8 @@ import java.util.List;
  * A tuple cache implementation needs an update function, and optionally may implement remove.  
  * A TupleCache should always take an external, mutable java.util.Map as a backing store.  
  * Tuples are 4 element lists of the form [cache-key key val time]
+ * cache-key, key and val are treated as opaque objects.
+ * Time can be any Comparable, typically a Long (millis) or a java.sql.Timestamp.
  * The semantics of update and remove will differ by implementation.
  */
 public interface TupleCache {

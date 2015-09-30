@@ -51,11 +51,15 @@
   (is (= [] (.actionsForSubj mcs :s-does-not-exist))))
 
 (deftest test-countsForSubjAction
-  (is (instance? java.util.List (.countsForSubjAction mcs :s0 :a0)))
-  (is (instance? CountSummary$CountTriple (first (.countsForSubjAction mcs :s0 :a0))))
-  (validateCountTripleList [[:o0 1 1000] [:o1 5 1001]] (.countsForSubjAction mcs :s0 :a0))
-  (validateCountTripleList [] (.countsForSubjAction mcs :s0 :a-does-not-exist))
-  (validateCountTripleList [] (.countsForSubjAction mcs :s-does-not-exist :a0)))
+  (is (instance? java.util.List (.countsForSubjAction mcs :s0 (into-array [:a0]))))
+  (is (instance? CountSummary$CountTriple (->> [:a0]
+                                               into-array
+                                               (.countsForSubjAction mcs :s0)
+                                               first)))
+  (validateCountTripleList [[:o0 1 1000] [:o1 5 1001]] (.countsForSubjAction mcs :s0 (into-array [:a0])))
+  (validateCountTripleList [[:o0 1 1000] [:o1 7 1005]] (.countsForSubjAction mcs :s0 (into-array [:a0 :a1])))
+  (validateCountTripleList [] (.countsForSubjAction mcs :s0 (into-array [:a-does-not-exist])))
+  (validateCountTripleList [] (.countsForSubjAction mcs :s-does-not-exist (into-array [:a0]))))
 
 
 (deftest test-sumCounts

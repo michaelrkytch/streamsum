@@ -24,11 +24,13 @@ public interface CountSummary {
     List<Object> actionsForSubj(Object subj);
 
     /**
-     * Given a subject and an action, return an unordered sequence of [obj count time] tuples
-     * associated with the subject and action.
+     * Given a subject and a set of actions, 
+     * return an unordered sequence of [obj count time] tuples
+     * representing the count and most recent time for each matching
+     * [subj action obj] relationship in the cache.
      * @return list of CountTriple.  May be empty, never null.
      **/
-    List<CountTriple> countsForSubjAction(Object subj, Object action);
+    List<CountTriple> countsForSubjAction(Object subj, Object... actions);
     
     /**
      * Sum all event counts for one subject

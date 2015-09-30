@@ -5,7 +5,7 @@
   (:import [streamsum.tuple_counts CountSummary CountSummary$CountTriple]
            [java.util Map]))
 
-(declare count-sum-for-actions)
+(declare counts-for-actions-map count-sum-for-actions-map select-actions-map)
 
 (defrecord CountTripleImpl [obj count time]
   CountSummary$CountTriple
@@ -34,19 +34,40 @@
         ;; default empty list
         []))
 
-  (countsForSubjAction [this subj action]
-    (or (some->> [subj action]
-                 (get-in db)            ; {object [count timestamp]}
-                 (map #(apply new-CountTriple %)) ; (CountTriple ...)
-                 )))
+  ;; Variadic args will be passed in as an Object array
+  (countsForSubjAction [this subj actions]
+    (->> actions
+         seq
+         (select-actions-map db subj)
+         counts-for-actions-map))
 
   (sumCounts [this subj] 
-    (count-sum-for-actions db subj))
+    (->> (get db subj)                  ; all actions for the given subject
+         (count-sum-for-actions-map)))
 
   ;; Variadic args will be passed in as an Object array
-  (sumCounts [this subj args] 
-    (count-sum-for-actions db subj (seq args))))
+  (sumCounts [this subj actions] 
+    (->> actions
+         seq
+         (select-actions-map db subj)
+         count-sum-for-actions-map)))
 
+(defn merge-leaves 
+  "Merge two [count timestamp] pairs by summing counts and taking largest time"
+  [[count1 time1] [count2 time2]]
+  [(+ count1 count2) (max time1 time2)])
+
+(defn counts-for-actions-map
+  "Return CountTriple records for a subtree of actions { action { object [count timestamp] } }"
+  [actions-map]
+  (or 
+   (some->> actions-map                          ; { action { object [count timestamp] } }
+            vals                                 ; ({ object [count timestamp] } ... )
+            (apply merge-with merge-leaves )     ; { object [count timestamp] }
+            (map #(apply new-CountTriple %)))
+   ;; default empty list
+   []
+   ))
 
 (defn count-sum-for-actions-map
   "Sum all event counts within a subtree of actions { action { object [count timestamp] } }"
@@ -59,12 +80,11 @@
       (map first)                       ; ( count ... )
       (reduce +)))
 
-(defn count-sum-for-actions
-  "Sum all event counts for a given subject and optional sequence of actions"
+(defn select-actions-map
+  "Return the { action { object [count time] } } subtree for the given subject and actions"
   [db subj & [actions]]
-  (let [counts-by-action (get db subj)
-        actions-map (if actions
-                      (select-keys counts-by-action actions)
-                      ;; else return all actions for the given subject
-                      counts-by-action)]
-    (count-sum-for-actions-map actions-map)))
+  (let [counts-by-action (get db subj)]
+    (if actions
+      (select-keys counts-by-action actions)
+      ;; else return all actions for the given subject
+      counts-by-action)))
