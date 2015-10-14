@@ -18,6 +18,7 @@
 
 ;; Specter doesn't normally support using strings and numbers as 
 ;; map keys, so we extend the StructurePath protocol to support these
+;; We also want to support nil keys
 (extend-protocol p/StructurePath
   
   java.lang.Number
@@ -30,7 +31,15 @@
   (select* [^String s structure next-fn]
     (next-fn (get structure s)))
   (transform* [^String s structure next-fn]
-    (assoc structure s (next-fn (get structure s)))))
+    (assoc structure s (next-fn (get structure s))))
+
+  nil
+  (select* [_ structure next-fn]
+    (next-fn (get structure nil)))
+  (transform* [_ structure next-fn]
+    (assoc structure nil (next-fn (get structure nil)))))
+
+
 
 (defn inc-count-in-val
   "For value structure of the form {action {object [count time]}}, 

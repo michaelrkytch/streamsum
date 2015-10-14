@@ -1,4 +1,4 @@
-(defproject michaelrkytch/streamsum "0.1.4"
+(defproject michaelrkytch/streamsum "0.1.6-SNAPSHOT"
   :description "Configuration-driven summarization of event streams."
   :url "https://github.com/michaelrkytch/streamsum"
   :license {:name "Eclipse Public License"

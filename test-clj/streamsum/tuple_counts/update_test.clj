@@ -76,6 +76,23 @@
     (is (= [2 1005] (s/select-one [:s0 :a1 :o1] db)))
     (is (= [10 1010] (s/select-one [:s1 :a0 :o3] db)))))
 
+(deftest test-nil-keys
+  (let [db (HashMap. simple-db)]
+    (inc-count! db [:s-new :a-new nil 4000])
+    (inc-count! db [:s-new nil :o-new 4001])
+    (inc-count! db [:s-new nil nil 4002])
+    (inc-count! db [nil nil nil 4003])
+    (inc-count! db [nil :a-new nil 4004])
+    (inc-count! db [nil nil :o-new 4005])
+
+    (is (= [1 4000] (s/select-one [:s-new :a-new nil] db)))
+    (is (= [1 4001] (s/select-one [:s-new nil :o-new] db)))
+    (is (= [1 4002] (s/select-one [:s-new nil nil] db)))
+    (is (= [1 4003] (s/select-one [nil nil nil] db)))
+    (is (= [1 4004] (s/select-one [nil :a-new nil] db)))
+    (is (= [1 4005] (s/select-one [nil nil :o-new] db)))))
+
+
 (deftest test-non-kw-keys
   ;; specter requires non-keyword map keys to be treated specially
   (let [new-val (inc-count-in-val {}  ["mything" 1 3001])]
