@@ -5,7 +5,7 @@ Configuration-driven summarization of a stream of events into a pluggable kv sto
 ## Leiningen
 
 ```clojure
-[michaelrkytch.streamsum "0.1.0"]
+[michaelrkytch.streamsum "0.1.6"]
 ```
 
 ## Overview

@@ -1,11 +1,91 @@
 (ns streamsum.tuple-counts.query-api
   "CountSummaryImpl is an implementation of the CountSummary interface that can be used to access the provided tuple count structure."
   (:require [clojure.data.priority-map :as pm]
-            [clojure.algo.generic.functor :refer [fmap]])
+            [clojure.algo.generic.functor :refer [fmap]]
+            [com.rpl.specter :as s])
   (:import [streamsum.tuple_counts CountSummary CountSummary$CountTriple]
            [java.util Map]))
 
 (declare counts-for-actions-map count-sum-for-actions-map select-actions-map)
+
+
+;; Recursive methods to flatten the tuple-cache structure into a sequence of tuples
+;; These aren't currently used as we are using specter to walk the structure
+;;
+;; (defn flatten 
+;;   "Walk the tree and return a lazy sequence of tuples in prefix order"
+;;   [db] (flatten* [] db))
+
+;; (defn- flatten* [path node]
+;;   (cond 
+;;     (map? node)
+;;     ;; map over map entries
+;;     (mapcat
+;;      #(flatten* (conj path (first %)) (second %))
+;;      (seq node))
+    
+;;     (sequential? node)
+;;     ;; make a tuple out of the path + the sequence
+;;     ;; return as a sequence containing the single tuple
+;;     (list (concat path node))
+
+;;     ;; we don't expect to hit this case for count cache structure
+;;     :else (list (list node))
+;;     ))
+
+
+;; The following function uses specter to filter the tuple-counts structure and walk the remaining
+;; filtered view, returning a sequence of tuples
+;; Example:
+;; 
+;;(def simple-db {:s0 {:a0 {:o0 [1 1000], :o1 [5 1001]}, :a1 {:o1 [2 1005]}}, :s1 {:a0 {:o1 [1 1002], :o3 [10 1010], :o5 [7 1008]}}})
+;;(pprint (s/select [s/ALL (s/collect-one s/FIRST) s/LAST 
+;;                   s/ALL #(#{:a0 :a1} (first %)) (s/collect-one s/FIRST) s/LAST 
+;;                   s/ALL (s/collect-one s/FIRST) s/LAST]
+;;                  simple-db))
+;;
+;;[[:s0 :a0 :o0 [1 1000]]
+;; [:s0 :a0 :o1 [5 1001]]
+;; [:s0 :a1 :o1 [2 1005]]
+;; [:s1 :a0 :o1 [1 1002]]
+;; [:s1 :a0 :o3 [10 1010]]
+;; [:s1 :a0 :o5 [7 1008]]]
+
+;; The pattern [s/ALL (s/collect-one s/FIRST) s/LAST] iterates through all the entries of a map
+;; and decends into each value, remembering the associated key.
+;;
+;; The pattern [s/ALL #(#{:a0 :a1} (first %)) (s/collect-one s/FIRST) s/LAST] iterates through
+;; all the entries of a map, and selects those entries whose key is in the set #{:a0 :a1}, 
+;; and decends into each value, remembering the associated key.
+;;
+;; At the end of the pattern we have selected a sequence of [count time] values in vector form.
+;; Each value is prefixed by the values collected previously in the pattern using collect-one
+
+;; TODO use compiled paths
+
+(def all-map-entries [s/ALL (s/collect-one s/FIRST) s/LAST])
+(defn key-filter 
+  "Given a list of keys [:x :y], generates a selector path of the form 
+  [ALL #(#{:x :y} (first %)) LAST]"
+  [keyvec]
+  [s/ALL #((set keyvec) (first %)) (s/collect-one s/FIRST) s/LAST])
+
+(defn select-and-flatten 
+  "Filter by the given lists of subject action and object and flatten the
+  resulting structure into tuples of the form [s a o [count time]].  Returns
+  a sequence of these tuples.
+  nil keyset means select all keys.
+
+  Example:
+  (select-and-flatten simple-db nil [:a0] [:o1 :o5])
+  "
+  [db subjs actions objs]
+  (let [keypath (concat
+                 (if subjs (key-filter subjs) all-map-entries)
+                 (if actions (key-filter actions) all-map-entries)
+                 (if objs (key-filter objs) all-map-entries))]
+    (s/select keypath db)))
+
 
 (defrecord CountTripleImpl [obj count time]
   CountSummary$CountTriple
