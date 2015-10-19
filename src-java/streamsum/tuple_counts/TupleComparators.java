@@ -10,7 +10,9 @@ public class TupleComparators {
             else return -1;
         }
         if (o2 == null) return 1;
-        return Long.compare(o1.getTime().getTime(), o2.getTime().getTime());
+        long t1 = o1.getTime().getTime();
+        long t2 = o2.getTime().getTime();
+        return (t1 < t2) ? -1 : ((t1 == t2) ? 0 : 1);
     }
 
     public static int compareByCount(CountTuple o1, CountTuple o2) {
@@ -19,7 +21,9 @@ public class TupleComparators {
             else return -1;
         }
         if (o2 == null) return 1;
-        return Long.compare(o1.getCount(), o2.getCount());
+        long c1 = o1.getCount();
+        long c2 = o2.getCount();
+        return (c1 < c2) ? -1 : ((c1 == c2) ? 0 : 1);
     }
 
     public static Comparator<CountTuple> timeComparator(boolean ascending) {

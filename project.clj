@@ -11,7 +11,7 @@
                  [org.clojure/core.match "0.3.0-alpha4"]
                  [com.stuartsierra/component "0.2.3"]
                  [org.clojure/core.async "0.1.346.0-17112a-alpha"]
-                 [com.rpl/specter "0.8.0"]
+                 [com.rpl/specter "0.8.0" :exclusions [org.clojure/clojurescript]]
                  ;; Needed for JDK 1.6 support
                  [org.codehaus.jsr166-mirror/jsr166y "1.7.0"]]
   :source-paths ["src-clj"]
