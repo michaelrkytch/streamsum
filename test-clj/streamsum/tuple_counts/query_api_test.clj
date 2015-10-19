@@ -1,8 +1,13 @@
 (ns streamsum.tuple-counts.query-api-test
   (:require  [streamsum.tuple-counts.query-api :refer :all] 
-             [clojure.test :refer :all])
+             [clojure.test :refer :all]
+             [com.rpl.specter :as s])
   (:import [java.sql Timestamp]
-           [streamsum.tuple_counts CountSummary CountSummary$CountTriple]))
+           [streamsum.tuple_counts 
+            CountSummary 
+            Queries 
+            TupleComparators
+            CountSummary$CountTriple]))
 
 (deftest test-CountTriple
   (let [objid 101
@@ -32,8 +37,13 @@
                   }
                  }
                 })
-
 (def ^CountSummary mcs (->CountSummaryImpl simple-db))
+
+;; Same structures, using Timestamp instead of numeric time
+;; Navigate down to the time value and replace it with a Timestamp
+(def simple-db-ts (s/transform [s/ALL s/LAST s/ALL s/LAST s/ALL s/LAST s/LAST] #(Timestamp. %) simple-db))
+(def ^Queries mcs-ts (->CountSummaryImpl simple-db-ts))
+
 
 (defn validateCountTripleList
   ;; Check set equality of two lists -- for methods that return lists in arbitrary order
@@ -71,3 +81,55 @@
   (is (= 0 (.sumCounts mcs :s0 (into-array [:a-does-not-exist]))))
   (is (= 0 (.sumCounts mcs :s-does-not-exist))))
 
+(deftest test-tuplesForSubjAction
+  (is (= 6 (count (.tuplesForSubjAction ^Queries mcs nil nil))) "Query for all tuples should have returned 6 tuples")
+  (is (= 3 (count (.tuplesForSubjAction ^Queries mcs :s0 nil))) "Query for subject :s0 should return 3 tuples")
+  (is (= 5 (count (.tuplesForSubjAction ^Queries mcs nil (into-array [:a0 :ax :ay])))) "Query for action ::a0 should return 5 tuples")
+  (is (= 1 (count (.tuplesForSubjAction ^Queries mcs :s0 (into-array [:a1])))))
+  (is (= 0 (count (.tuplesForSubjAction ^Queries mcs :s0 (into-array [:ax])))) "Query for non-existent action should return 0 tuples.")
+  (is (= 0 (count (.tuplesForSubjAction ^Queries mcs :sx nil))) "Query for non-existent subject should return 0 tuples."))
+
+(deftest test-tuplesForSubjAction-sorting
+
+  ;; Queries over whole db
+
+  (let [all-tuples-by-asc-count (.tuplesForSubjAction mcs-ts (TupleComparators/countComparator true) nil nil)]
+    (is (= 6 (count all-tuples-by-asc-count)))
+    (is (= [1 1 2 5 7 10] (map (memfn getCount) all-tuples-by-asc-count))))
+  (let [all-tuples-by-desc-count (.tuplesForSubjAction mcs-ts (TupleComparators/countComparator false) nil nil)]
+    (is (= 6 (count all-tuples-by-desc-count)))
+    (is (= [10 7 5 2 1 1] (map (memfn getCount) all-tuples-by-desc-count))))
+  (let [all-tuples-by-asc-time (.tuplesForSubjAction mcs-ts (TupleComparators/timeComparator true) nil nil)]
+    (is (= 6 (count all-tuples-by-asc-time)))
+    (is (= [1000 1001 1002 1005 1008 1010] 
+           (map 
+            ;; Extract time from CountTuple, and then time value from Timestamp
+            (comp (memfn getTime) (memfn getTime))
+            all-tuples-by-asc-time))))
+  (let [all-tuples-by-desc-time (.tuplesForSubjAction mcs-ts (TupleComparators/timeComparator false) nil nil)]
+    (is (= 6 (count all-tuples-by-desc-time)))
+    (is (= [1010 1008 1005 1002 1001 1000] (map (comp (memfn  getTime) (memfn getTime)) all-tuples-by-desc-time)))
+
+  ;; query over all db, sort by count, then time
+
+  (let [all-tuples-by-asc-countTime (.tuplesForSubjAction mcs-ts (TupleComparators/countTimeComparator true) nil nil)]
+    (is (= 6 (count all-tuples-by-asc-countTime)))
+    (is (= [1 1 2 5 7 10] (map (memfn getCount) all-tuples-by-asc-countTime)))
+    (is (= [1000 1002 1005 1001 1008 1010] (map (comp (memfn  getTime) (memfn getTime)) all-tuples-by-asc-countTime))))
+
+  (let [all-tuples-by-desc-countTime (.tuplesForSubjAction mcs-ts (TupleComparators/countTimeComparator false) nil nil)]
+    (is (= 6 (count all-tuples-by-desc-countTime)))
+    (is (= [10 7 5 2 1 1] (map (memfn getCount) all-tuples-by-desc-countTime)))
+    (is (= [1010 1008 1001 1005 1002 1000] (map (comp (memfn  getTime) (memfn getTime)) all-tuples-by-desc-countTime)))))
+  
+  ;; filter for specific action
+
+  (let [tuples-by-asc-countTime (.tuplesForSubjAction mcs-ts (TupleComparators/countTimeComparator true) nil (into-array [:a0]))]
+    (is (= 5 (count tuples-by-asc-countTime)))
+    (is (= [1 1 5 7 10] (map (memfn getCount) tuples-by-asc-countTime)))
+    (is (= [1000 1002 1001 1008 1010] (map (comp (memfn  getTime) (memfn getTime)) tuples-by-asc-countTime))))
+
+  ;; filter for specific subject
+  (let [tuples-by-desc-count (.tuplesForSubjAction mcs-ts (TupleComparators/countComparator false) :s0 nil)]
+    (is (= 3 (count tuples-by-desc-count)))
+    (is (= [5 2 1] (map (memfn getCount) tuples-by-desc-count)))))

@@ -3,8 +3,12 @@
   (:require [clojure.data.priority-map :as pm]
             [clojure.algo.generic.functor :refer [fmap]]
             [com.rpl.specter :as s])
-  (:import [streamsum.tuple_counts CountSummary CountSummary$CountTriple]
-           [java.util Map]))
+  (:import [streamsum.tuple_counts 
+            CountSummary 
+            CountSummary$CountTriple
+            CountTuple
+            Queries]
+           [java.util Map Comparator]))
 
 (declare counts-for-actions-map count-sum-for-actions-map select-actions-map)
 
@@ -86,6 +90,16 @@
                  (if objs (key-filter objs) all-map-entries))]
     (s/select keypath db)))
 
+(defrecord CountTupleImpl [subj action obj count time]
+  CountTuple
+  (getSubject [_] subj)
+  (getAction [_] action)
+  (getObject [_] obj)
+  (getCount [_] count)
+  (getTime [_] time))
+
+(defn new-CountTuple [[s a o [c t]]]
+  (->CountTupleImpl s a o c t))
 
 (defrecord CountTripleImpl [obj count time]
   CountSummary$CountTriple
@@ -93,8 +107,8 @@
   (getCount [_] count)
   (getTime [_] time))
 
-(defn new-CountTriple
-  [obj [count time]] (->CountTripleImpl obj count time))
+(defn new-CountTriple [obj [count time]] 
+  (->CountTripleImpl obj count time))
 
 (defrecord CountSummaryImpl [db]
   CountSummary
@@ -130,7 +144,24 @@
     (->> actions
          seq
          (select-actions-map db subj)
-         count-sum-for-actions-map)))
+         count-sum-for-actions-map))
+
+  Queries
+  (tuplesForSubjAction [this subj actions]
+    ;; Expecting a single subj value or nil
+    ;; Expecting an array of actions
+    ;; convert non-nil args to sequences for lower-level fns
+    (let [subj (if-not (nil? subj) [subj])
+          actions (seq actions)]
+      (->> (select-and-flatten db subj actions nil)
+           (map new-CountTuple))))
+
+  (tuplesForSubjAction [this comparator subj actions]
+    {:pre [(not (nil? comparator))]}
+    (->> (.tuplesForSubjAction this subj actions)
+        (sort comparator)))
+)
+
 
 (defn merge-leaves 
   "Merge two [count timestamp] pairs by summing counts and taking largest time"

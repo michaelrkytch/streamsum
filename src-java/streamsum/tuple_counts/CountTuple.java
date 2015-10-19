@@ -5,7 +5,7 @@ import java.sql.Timestamp;
 /**
  * Represents a complete tuple-count cache entry
  **/
-interface CountTuple {
+public interface CountTuple {
     Object getSubject();
     Object getAction();
     Object getObject();
