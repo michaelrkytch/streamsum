@@ -1,8 +1,6 @@
 (ns streamsum.tuple-counts.query-api
   "CountSummaryImpl is an implementation of the CountSummary interface that can be used to access the provided tuple count structure."
-  (:require [clojure.data.priority-map :as pm]
-            [clojure.algo.generic.functor :refer [fmap]]
-            [com.rpl.specter :as s])
+  (:require [com.rpl.specter :as s])
   (:import [streamsum.tuple_counts 
             CountSummary 
             CountSummary$CountTriple
