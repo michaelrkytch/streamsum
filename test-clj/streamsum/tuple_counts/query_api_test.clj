@@ -3,6 +3,7 @@
              [clojure.test :refer :all]
              [com.rpl.specter :as s])
   (:import [java.sql Timestamp]
+           [java.util Map HashMap]
            [streamsum.tuple_counts 
             CountSummary 
             Queries 
@@ -39,9 +40,19 @@
                 })
 (def ^CountSummary mcs (->CountSummaryImpl simple-db))
 
-;; Same structures, using Timestamp instead of numeric time
-;; Navigate down to the time value and replace it with a Timestamp
-(def simple-db-ts (s/transform [s/ALL s/LAST s/ALL s/LAST s/ALL s/LAST s/LAST] #(Timestamp. %) simple-db))
+;; Same structures, using Timestamp instead of numeric time, and put into a HashMap
+;; Since the cache server can hand back any kind of Map, we want to make sure
+;; that the query functions work even when the Map is not a Clojure persistent map
+
+(def simple-db-ts 
+  (let [m (->> simple-db
+               ;; Navigate down to the time value and replace it with a Timestamp
+               (s/transform [s/ALL s/LAST s/ALL s/LAST s/ALL s/LAST s/LAST] #(Timestamp. %)))
+        hm (HashMap.)]
+    (doseq [[k v] (seq m)]
+      (.put hm k v))
+    hm))
+
 (def ^Queries mcs-ts (->CountSummaryImpl simple-db-ts))
 
 

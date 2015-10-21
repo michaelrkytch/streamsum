@@ -53,24 +53,30 @@
 ;; [:s1 :a0 :o3 [10 1010]]
 ;; [:s1 :a0 :o5 [7 1008]]]
 
-;; The pattern [s/ALL (s/collect-one s/FIRST) s/LAST] iterates through all the entries of a map
+;; The pattern [s/ALL (s/collect-one (s/view key)) (s/view val)] iterates through all the entries of a map
 ;; and decends into each value, remembering the associated key.
 ;;
-;; The pattern [s/ALL #(#{:a0 :a1} (first %)) (s/collect-one s/FIRST) s/LAST] iterates through
+;; The pattern [s/ALL #(get #{:a0 :a1} (key %)) (s/collect-one (s/view key)) (s/view val)] iterates through
 ;; all the entries of a map, and selects those entries whose key is in the set #{:a0 :a1}, 
 ;; and decends into each value, remembering the associated key.
 ;;
 ;; At the end of the pattern we have selected a sequence of [count time] values in vector form.
 ;; Each value is prefixed by the values collected previously in the pattern using collect-one
+;;
+;; These Selecter paths are a bit more complex than normal because we need to support all Java Maps,
+;; not just Clojure's map implementations.  This means, in particular, that when iterating through 
+;; HashMap$MapEntry values, we cannot treat the entry as a sequence, as we would in pure Clojure,
+;; because HashMap$MapEntry does not implement Iterable
+;; 
+;; TODO use compiled paths -- not simple since we need to concatenate 3 different sub-paths
+;; If we need better performance, we may need to go back to a hand-written recursive function
 
-;; TODO use compiled paths
-
-(def all-map-entries [s/ALL (s/collect-one s/FIRST) s/LAST])
+(def all-map-entries [s/ALL (s/collect-one (s/view key)) (s/view val)])
 (defn key-filter 
   "Given a list of keys [:x :y], generates a selector path of the form 
-  [ALL #(#{:x :y} (first %)) LAST]"
+  [ALL #(get #{:x :y} (key %)) (view val)]"
   [keyvec]
-  [s/ALL #((set keyvec) (first %)) (s/collect-one s/FIRST) s/LAST])
+  [s/ALL #(get (set keyvec) (key %)) (s/collect-one (s/view key)) (s/view val)])
 
 (defn select-and-flatten 
   "Filter by the given lists of subject action and object and flatten the
