@@ -81,8 +81,9 @@
     (if output-encoder 
       (comp 
        xform 
-       (map (fn [[cache-key key val time]] 
-              (proto/encode output-encoder cache-key key val time))))
+       (map (fn [[cache-key key val time :as tuple]]
+              (when tuple
+                (proto/encode output-encoder cache-key key val time)))))
       xform)))
 
 (defn event-processing-channel
