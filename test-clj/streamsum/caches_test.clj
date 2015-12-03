@@ -54,6 +54,8 @@
   (undoUpdate [this tuple] tuple)
   (backingMap [this] backing-map))
 
+
+
 (def extra-cache-factories
   {:null-cache ->DevNullCache})
 
@@ -67,7 +69,6 @@
     (is (instance? streamsum.caches.LastNCache (:lastn mappings)))
     (is (instance? streamsum.caches.CountCache (:count mappings)))
     (is (instance? DevNullCache (:null mappings)))))
-
 
 (deftest test-cache-server
   (let [cm1 (default-cache-server)
@@ -194,4 +195,9 @@
     (record-fn [:create-thread-user 1009 nil t])
     (is (= nil (get (get-cache caches-comp :create-thread-user) 1009)))))
 
-     
+(deftest test-record-exception
+  (with-mock-caches caches-comp record-fn t
+    (is (nil? 
+         ;; This cache type throws exception on update, but we
+         ;; expect record! to catch and log update exceptions
+         (record-fn [:exception-cache "key" "val" t])))))

@@ -169,7 +169,10 @@
                       ;; Apply the associated cache update function to the tuple
                       (do 
                         (metrics/log metrics-component cache-key 1)
-                        (.update cache tuple))
+                        (try
+                          (.update cache tuple)
+                          (catch Exception e
+                            (log/warn e "Exception recording tuple " tuple))))
                       ;; else cache-key did not match one of our caches (log returns nil)
                       (log/debug "Tuple predicate " cache-key " did not match any cache in cache configuration."))]
       ret-tuple

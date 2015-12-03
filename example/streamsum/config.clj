@@ -46,6 +46,12 @@
 
   (backingMap [this] backing-map))
 
+;; Test cache type that throws RuntimeException on all updates
+(defrecord ExceptionCache [backing-map]
+  TupleCache
+  (update [this tuple] (throw (RuntimeException. "I hate everything.")))
+  (undoUpdate [this tuple] tuple)
+  (backingMap [this] backing-map))
 
 ;;
 ;; The last form in the config file should be a map containing
@@ -61,7 +67,8 @@
  ;; A cache factory function is expected to be arity 1, taking the backing map 
  ;; as an argument.
  ;;
- :cache-factory-fns { :keycount ->KeyCountCache }
+ :cache-factory-fns { :keycount ->KeyCountCache 
+                      :exception-cache ->ExceptionCache }
  
 
  ;; 
@@ -79,6 +86,7 @@
   :annotate-user-doc [:lastn "last N documents which a user annotated"]
   :interactions-user-user [:count "Count of user-user interactions of various types, keyed by subject user"]
   :subject-counts [:keycount "Count number of times each subject appears in the tuple stream"]
+  :exception-cache [:exception-cache "Test cache that throws exception on update"]
   }
 
  ;;
