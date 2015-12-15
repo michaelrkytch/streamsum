@@ -64,7 +64,7 @@
 (deftest test-getCount
   (is (instance? CountSummary$CountTriple (.getCount mcs :s0 :a0 :o1)))
   (is (= [:o1 5 1001] (vals (.getCount mcs :s0 :a0 :o1))))
-  (is (= [:o0 0 0] (vals (.getCount mcs :s0 :a1 :o0)))))
+  (is (= [:o0 0 nil] (vals (.getCount mcs :s0 :a1 :o0)))))
 
 (deftest test-actionsForSubj
   (is (instance? java.util.List (.actionsForSubj mcs :s0)))

@@ -122,7 +122,7 @@
       (if c-t-pairs
         (new-CountTriple obj c-t-pairs)
         ;; else not found
-        (new-CountTriple obj [0 0]))))
+        (new-CountTriple obj [0 nil]))))
 
   
   (actionsForSubj [this subj] 

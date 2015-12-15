@@ -13,7 +13,7 @@ public interface CountSummary {
 
     /**
      * @return the count summary for a given tuple key.  If no data present
-     * for the given key, will return [obj 0 0].
+     * for the given key, will return [obj 0 null].
      */
     CountTriple getCount(Object subj, Object action, Object obj);
     
